@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sash — brainstorming</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1b; --muted: #6b6a66; --line: #e4e1da;
+    --accent: #7a4b1e; --card: #ffffff; --code: #f1efe9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16161a; --fg: #ebe9e4; --muted: #9c9a94; --line: #2b2b31;
+            --accent: #d9a468; --card: #1e1e24; --code: #24242b; }
+  }
+  html { color-scheme: light dark; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 16px/1.55 -apple-system, "SF Pro Text", system-ui, sans-serif; }
+  main { max-width: 46rem; margin: 0 auto; padding: 3rem 1.25rem 5rem; }
+  h1 { font-size: 2rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 2.5rem; }
+  h2 { font-size: 1.25rem; margin: 2.75rem 0 .75rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
+  h3 { font-size: 1rem; margin: 1.5rem 0 .4rem; }
+  p, li { max-width: 42rem; }
+  ul { padding-left: 1.2rem; }
+  li { margin: .35rem 0; }
+  li b { font-weight: 600; }
+  code { font: .9em/1 "SF Mono", ui-monospace, Menlo, monospace; background: var(--code);
+         padding: .1em .35em; border-radius: 4px; }
+  pre { background: var(--code); padding: 1rem; border-radius: 8px; overflow-x: auto;
+        font: .85rem/1.5 "SF Mono", ui-monospace, Menlo, monospace; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .95rem; margin: 1rem 0; }
+  th, td { text-align: left; vertical-align: top; padding: .5rem .6rem; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  .callout { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+             padding: .9rem 1.1rem; border-radius: 6px; margin: 1.25rem 0; }
+  .callout p { margin: 0; }
+  ol.phases li { margin: .6rem 0; }
+  .open { color: var(--muted); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sash</h1>
+  <p class="sub">A Swift package that makes a single-page web app feel like a native macOS app.
+     Brainstorming notes, September 2026.</p>
+
+  <div class="callout">
+    <p><b>One sentence.</b> The SPA stays a plain web app that talks HTTP. Sash owns a private URL scheme
+    inside a <code>WKWebView</code> and decides who answers each request: files in the bundle, Swift
+    handlers in-process, a local socket, or a real server. Everything native — window, toolbar, Settings,
+    storage, updates — comes from Swift the developer writes, with Sash doing the wiring.</p>
+  </div>
+
+  <h2>Where this comes from</h2>
+  <p>Vaelth.app is a native shell around a portal served by a Go daemon. It hosts the unchanged SPA in a
+     <code>WKWebView</code> under a private scheme, proxies every load to the daemon's unix socket
+     (including two Server-Sent Events streams), watches the DOM to drive a native toolbar, runs the
+     daemon's doctor and repair from a SwiftUI Settings pane, and updates itself from an appcast with a
+     SHA-256 and code-signature check before swapping the bundle in place.</p>
+  <p>Compared with Tauri, it is the same shape: thin native process, system web view, custom scheme,
+     in-place updater. It differs where it matters here. Tauri's custom protocol returns a whole response
+     and cannot stream, so SSE over it does not work. Tauri has native menus and a tray but no
+     <code>NSToolbar</code> items. Tauri's job is cross-platform; this shell's job is to be a Mac app.</p>
+  <p>Sash is the generalisation: keep the parts that were about hosting a web app well, drop the parts
+     that were about vaelth, and make the transport pluggable.</p>
+
+  <h2>The core idea</h2>
+  <p>The SPA does <code>fetch("/api/...")</code> and <code>new EventSource("/events")</code> and nothing
+     else. Sash routes each request to a <b>source</b>:</p>
+  <ul>
+    <li><b>Bundle source.</b> Files embedded in the app or package, served with correct MIME types.
+        This is the zero-backend case: a world clock, a note taker, a calculator.</li>
+    <li><b>Swift routes.</b> Handlers registered from Swift. Bodies are async sequences of bytes, so a
+        route can stream and SSE works exactly as it does in Vaelth.app today.</li>
+    <li><b>Socket or remote source.</b> A unix socket (what vaelth does) or an HTTPS origin behind an
+        allow-list, for the mixed online-and-local case.</li>
+    <li><b>Overlay source.</b> An updated web layer in Application Support layered over the shipped one.
+        This is how the inside changes without the app changing.</li>
+  </ul>
+  <p>Because the contract is HTTP, the same SPA runs unchanged against a real server in a browser,
+     against a mock in tests, and against Swift in the app. That is the property that makes it friendly
+     to AI-written code: the model writes an ordinary web app and an ordinary set of handlers.</p>
+
+  <pre><code>// Sketch, not an API
+let app = Sash.App(bundle: .module) {
+    Routes {
+        Get("/api/clocks") { req in try await Clocks.list() }
+        Stream("/events") { emitter in
+            for await tick in Clock.ticks { emitter.send("tick", tick) }
+        }
+    }
+    Storage(.userDefaults(suite: "app.sash.worldclock"))
+    Updates(app: .appcast(url), web: .manifest(url, publicKey: key))
+}
+</code></pre>
+
+  <h2>What the package has to provide</h2>
+
+  <h3>Bridge, both directions, but boring</h3>
+  <ul>
+    <li><b>Page to app.</b> <code>window.host.call(name, args)</code> returning a promise, built on
+        <code>WKScriptMessageHandlerWithReply</code>. Named, typed, and listed, so the capability surface
+        is enumerable.</li>
+    <li><b>App to page.</b> The events stream. The page needs no special code to receive pushes; it is
+        already an <code>EventSource</code> consumer.</li>
+    <li><b>Observe mode.</b> The DOM-watching context bridge from vaelth becomes an opt-in for SPAs you
+        are not allowed to modify: a user script reports the active view, title, and subtitle.</li>
+  </ul>
+
+  <h3>Storage as a first-class citizen</h3>
+  <ul>
+    <li>Custom-scheme origins have had unreliable <code>localStorage</code> persistence, and service
+        workers do not run on them at all. Do not rely on WebKit here.</li>
+    <li>Inject the whole store as a user script at document start and shim <code>localStorage</code>
+        over it, with writes flowing through to <code>UserDefaults</code> or a file. Synchronous semantics
+        preserved; data lives where a Mac app's data lives.</li>
+    <li>Alongside that, an async <code>host.storage</code> for Keychain, iCloud key-value store, and
+        files, for apps designed for Sash rather than merely hosted by it.</li>
+    <li>This is the piece with real WebKit risk. Prototype it first.</li>
+  </ul>
+
+  <h3>Two update channels, independently versioned</h3>
+  <table>
+    <tr><th>Channel</th><th>Mechanism</th><th>Guards</th></tr>
+    <tr><td>App bundle</td>
+        <td>Appcast manifest, download, in-place swap, relaunch. Lifted from Vaelth.app's updater.</td>
+        <td>SHA-256 must match the manifest; the new bundle's code signature must validate. Swapping a
+            bundle ourselves bypasses Gatekeeper, so the updater does Gatekeeper's job.</td></tr>
+    <tr><td>Web layer</td>
+        <td>Signed manifest of files with hashes, downloaded into an overlay directory, switched in
+            atomically on next load or live reload.</td>
+        <td>Ed25519 signature verified with a key embedded in the app (Gatekeeper never sees HTML). The
+            manifest declares the Swift API version range it needs. The page must call
+            <code>host.ready()</code> within a few seconds of boot or the overlay is rolled back to the
+            shipped bundle.</td></tr>
+  </table>
+  <p>A release can move either channel or both. The compatibility range is what keeps a web-only update
+     from calling a route the shipped Swift does not have.</p>
+
+  <h3>Native chrome from declarations</h3>
+  <ul>
+    <li><b>Toolbar.</b> Items, primary action, and window title set by the page via
+        <code>host.toolbar.set([...])</code>, or read from the DOM in observe mode.</li>
+    <li><b>Settings.</b> A SwiftUI Settings window where <code>UserDefaults</code> is the source of truth.
+        Both sides subscribe; changes reach the page over the events stream.</li>
+    <li><b>Defaults that are not optional.</b> A real Edit menu (a <code>WKWebView</code> is mute on cut,
+        copy and paste without one), window restoration, appearance sync, and an About panel.</li>
+  </ul>
+
+  <h3>Security by construction</h3>
+  <ul>
+    <li>The page has no origin any other page could share and no route to the network except sources the
+        Swift side registered.</li>
+    <li>Routes and host calls are the whole capability surface, so the permission story is the list of
+        routes.</li>
+    <li>Navigation policy denies anything outside the scheme; external links open in the default
+        browser.</li>
+  </ul>
+
+  <h3>Dev and test loop</h3>
+  <ul>
+    <li>A dev source that proxies <code>/</code> to Vite with live reload while <code>/api</code> still
+        hits Swift.</li>
+    <li>A flag that also exposes the Swift routes on localhost so the SPA can be opened in Safari with real
+        devtools.</li>
+    <li>The offscreen <code>WKWebView</code> self-check from vaelth becomes an XCTest helper that boots
+        the shell headless and asserts the page reached ready.</li>
+  </ul>
+
+  <h2>What lifts out of vaelth, and what does not</h2>
+  <table>
+    <tr><th>Lifts with light generalisation</th><th>Stays behind as product code</th></tr>
+    <tr><td>
+      <ul>
+        <li>Scheme handler with streaming bodies</li>
+        <li>NSException bridge for the torn-down <code>WKURLSchemeTask</code> race</li>
+        <li>HTTP-over-unix-socket client</li>
+        <li>App updater and update checker</li>
+        <li>Offscreen self-check harness</li>
+        <li>DOM context bridge (as observe mode)</li>
+      </ul></td>
+      <td>
+      <ul>
+        <li>Toolbar chips and their layout</li>
+        <li>Daemon monitor (becomes a source-health hook)</li>
+        <li>Doctor and repair, elevation flow</li>
+        <li>Anything that knows what a host or a route is</li>
+      </ul></td></tr>
+  </table>
+  <p>New work: the storage shim, the signed web-layer overlay with rollback, the route DSL, and the dev
+     proxy. None is large.</p>
+
+  <h2>Gotchas already paid for</h2>
+  <ul>
+    <li><code>WKURLSchemeTask</code> can be torn down while a callback is in flight. A stopped flag under
+        a lock handles the common case; an Objective-C exception bridge covers the window no lock can
+        close. wry, Tauri's web-view layer, does the same with <code>objc2::exception::catch</code>.</li>
+    <li>The page reads <code>location.host</code>. Pick an authority for the private scheme that keeps
+        that sensible.</li>
+    <li>A <code>WKWebView</code> outside a window does not load. Tests need an offscreen window.</li>
+    <li>Two artifacts, two version numbers. The app and the web layer must not share one pointer on the
+        CDN.</li>
+    <li>Ordering of privileged and unprivileged setup steps matters when they create shared
+        directories. Sash will not ship elevation, but the lesson applies to any app that does.</li>
+  </ul>
+
+  <h2>Phasing</h2>
+  <ol class="phases">
+    <li><b>Shell.</b> Bundle source, routes, events, storage shim, Edit menu, window restoration. Ship the
+        world clock as the example app.</li>
+    <li><b>Updates.</b> Both channels with rollback, plus the compatibility range between web layer and
+        Swift API.</li>
+    <li><b>Ergonomics.</b> Toolbar and Settings bridges, dev proxy, test helper, and two skills: one for
+        the Swift side and one for the SPA contract, plus a template repo.</li>
+  </ol>
+
+  <h2>Open decisions</h2>
+  <ul class="open">
+    <li>The exact JavaScript surface of <code>window.host</code>, and whether it is injected or imported.</li>
+    <li>Whether Swift routes use an existing server type or a tiny one of our own.</li>
+    <li>Where the overlay directory lives and how many versions are kept for rollback.</li>
+    <li>Whether observe mode is worth keeping once the declarative toolbar exists.</li>
+    <li>Minimum macOS version, which decides whether <code>WKWebsiteDataStore(forIdentifier:)</code> is
+        available as a second storage option.</li>
+  </ul>
+</main>
+</body>
+</html>
