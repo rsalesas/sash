@@ -53,7 +53,7 @@
 <body>
 <main>
   <h1>Sash</h1>
-  <p class="sub">Specification, draft 1. A Swift package that hosts a single-page web app as a native
+  <p class="sub">Specification, draft 2. A Swift package that hosts a single-page web app as a native
      macOS app: your SwiftUI, your windows, your menus; the web app in a view; extensions as the only door
      between them. See <a href="brainstorming.html">brainstorming</a> for where this came from.</p>
 
@@ -65,6 +65,7 @@
     <li><a href="#core">The core surface</a></li>
     <li><a href="#standard">Standard extensions</a></li>
     <li><a href="#protocol">The extension protocol</a></li>
+    <li><a href="#recipes">Writing your own</a></li>
     <li><a href="#sources">Sources</a></li>
     <li><a href="#state">State and storage</a></li>
     <li><a href="#updates">Updates</a></li>
@@ -126,25 +127,23 @@
 
   <pre><code>@main struct WorldClock: App {
     @State private var host = Sash.Host(web: .bundle(.module)) {
-        Toolbar()
-        Menus()
-        Windows()
-        Notifications()
-        Haptics()
-        Clocks(store: db)          // the app's own extension
+        Net(allow: ["worldtimeapi.org"])   // standard, opt-in
+        Clipboard()                         // standard, opt-in
+        Clocks(store: db)                   // the app's own extension
+        Alerts()                            // the app's own: page asks, Swift notifies
     }
 
     var body: some Scene {
         WindowGroup {                                   // main window
             SashView(host)
-                .toolbar { SashToolbar(host) }
+                .toolbar { ClockToolbar(context: host.focused?.context) }
                 .navigationTitle(host.focused?.context.title ?? "World Clock")
         }
-        WindowGroup(for: Sash.Route.self) { $route in   // any window the page asks for
+        WindowGroup(for: Sash.Route.self) { $route in   // windows your extensions open
             SashView(host, route: route)
         }
-        Settings { SashSettings(host) { ClockSettings() } }
-        .commands { SashCommands(host) }
+        Settings { ClockSettings(settings: host.store.scope("settings")) }
+        .commands { ClockCommands(host) }
     }
 }</code></pre>
 
@@ -267,12 +266,13 @@
      transient coordination such as "scroll to this item".</p>
 
   <h3>4.5 Opening more</h3>
-  <p>The page cannot open a window by itself. With the Windows extension installed it asks:
-     <code>sash.windows.open({ route: "/clock/tokyo", title, size })</code>. Swift fulfils that with
-     <code>openWindow(value: Sash.Route)</code> into the <code>WindowGroup(for:)</code> the app declared,
-     which creates a new <code>SashView</code> and therefore a new session. Sheets and panels work the
-     same way through the extension's <code>sheet</code> and <code>panel</code> calls. Swift can also do
-     all of this itself with no page involvement.</p>
+  <p>The page cannot open a window by itself, and Sash ships no extension that lets it. If an app wants
+     the page to ask, the developer writes a call such as <code>sash.clocks.detach(city)</code> whose
+     handler does <code>openWindow(value: Sash.Route("/clock/tokyo"))</code> into the
+     <code>WindowGroup(for:)</code> the app declared. That creates a new <code>SashView</code> and
+     therefore a new session. Sheets and panels are the same pattern. What Sash provides is the plumbing:
+     the <code>Route</code> value type, sessions that carry it, and <code>host.makeSession(route:)</code>
+     for code that is not in SwiftUI.</p>
 
   <h3>4.6 Headless sessions</h3>
   <p><code>host.makeSession(route:, hidden: true)</code> creates a session in an offscreen window. A
@@ -303,57 +303,41 @@
      About panel showing both versions.</p>
 
   <!-- ============================================================ -->
-  <h2 id="standard">6. Standard extensions <small>shipped in the package, installed by choice</small></h2>
-  <p>These are the ones Sash ships in draft 1. Each is a small type; none is privileged over an extension
-     a developer writes. The namespace is what the page sees; the scope says whether one instance serves
-     the host or each session gets its own.</p>
+  <h2 id="standard">6. Standard extensions <small>three, all opt-in</small></h2>
+  <p>Sash ships the extensions that every web app already assumes exist, and nothing else. The test for
+     inclusion: does an ordinary page do this constantly, with no idea it is inside an app? Settings and
+     local storage, network, clipboard. Everything else is something the app means to do, and an app
+     that means to do something should say so in Swift.</p>
   <table>
     <tr><th>Namespace</th><th>Scope</th><th>Calls and behaviour</th><th>Native backing</th></tr>
-    <tr><td><code>toolbar</code></td><td class="scope">session</td>
-        <td><code>set(items)</code> with ids, titles, SF Symbols, primary flag, enabled. Item taps arrive as <code>sash:command</code>. <code>SashToolbar(host)</code> renders them for the current window.</td>
-        <td>SwiftUI <code>.toolbar</code></td></tr>
-    <tr><td><code>menus</code></td><td class="scope">host</td>
-        <td><code>set(menus)</code>: named top-level menus with items, key equivalents, enablement bound to focused context. <code>SashCommands(host)</code> renders them.</td>
-        <td><code>CommandMenu</code>, <code>CommandGroup</code></td></tr>
-    <tr><td><code>windows</code></td><td class="scope">host</td>
-        <td><code>open(route, options)</code>, <code>sheet</code>, <code>panel</code>, <code>close(id)</code>, <code>focus(id)</code>. Each open makes a session.</td>
-        <td><code>openWindow</code>, <code>WindowGroup(for:)</code>, sheets</td></tr>
-    <tr><td><code>files</code></td><td class="scope">host</td>
-        <td><code>openPanel(types, multiple)</code>, <code>savePanel(name, types)</code>, then <code>read(handle)</code>, <code>write(handle, bytes)</code>, <code>list(handle)</code>. Handles are opaque; the page never sees a path. Granted handles persist as security-scoped bookmarks by choice. Drops onto the view produce handles.</td>
-        <td><code>NSOpenPanel</code>, <code>NSSavePanel</code>, bookmarks</td></tr>
+    <tr><td><code>state</code> <span class="status">core</span></td><td class="scope">host</td>
+        <td>Not an extension, listed here because it is what most people reach for first. The store,
+            the <code>localStorage</code> shim on the <code>local</code> scope, and the
+            <code>settings</code> scope the Settings window binds to. See <a href="#state">State and
+            storage</a>.</td>
+        <td><code>UserDefaults</code>, files, iCloud key-value</td></tr>
     <tr><td><code>net</code></td><td class="scope">host</td>
-        <td><code>fetch(request)</code> proxied through <code>URLSession</code>, restricted to the hosts the Swift side listed at install. Streams bodies. Also installs a source-side allow-list so <code>fetch("https://...")</code> from the page works for those hosts only.</td>
+        <td><code>fetch(request)</code> proxied through <code>URLSession</code>, restricted to the hosts
+            the Swift side listed at install. Streams bodies. Also installs a source-side allow-list so a
+            plain page <code>fetch("https://...")</code> works for those hosts only. Nothing else in the
+            process gives the page the network.</td>
         <td><code>URLSession</code></td></tr>
-    <tr><td><code>notifications</code></td><td class="scope">host</td>
-        <td><code>requestPermission()</code>, <code>post(title, body, id, actions)</code>, <code>remove(id)</code>. Activation arrives as <code>sash:command</code>.</td>
-        <td><code>UNUserNotificationCenter</code></td></tr>
     <tr><td><code>clipboard</code></td><td class="scope">host</td>
-        <td><code>readText()</code>, <code>writeText()</code>, <code>readImage()</code>, <code>writeImage()</code>.</td>
+        <td><code>readText()</code>, <code>writeText()</code>, <code>readImage()</code>,
+            <code>writeImage()</code>. The Edit menu already covers cut, copy and paste inside the page;
+            this is for programmatic use.</td>
         <td><code>NSPasteboard</code></td></tr>
-    <tr><td><code>haptics</code></td><td class="scope">host</td>
-        <td><code>perform(pattern)</code>: alignment, levelChange, generic.</td>
-        <td><code>NSHapticFeedbackManager</code></td></tr>
-    <tr><td><code>keychain</code></td><td class="scope">host</td>
-        <td><code>get(key)</code>, <code>set(key, value)</code>, <code>remove(key)</code> under one service the Swift side names. Values never enter the store.</td>
-        <td>Security framework</td></tr>
-    <tr><td><code>updater</code></td><td class="scope">host</td>
-        <td><code>check()</code>, <code>status()</code>, <code>apply()</code> for both channels; progress as events. Swift configures the channels; the page may only show and trigger.</td>
-        <td>See <a href="#updates">Updates</a></td></tr>
-    <tr><td><code>dialogs</code></td><td class="scope">session</td>
-        <td><code>alert(style, title, message, buttons)</code> beyond what <code>window.alert</code> offers; <code>color()</code>; <code>font()</code>.</td>
-        <td><code>NSAlert</code>, <code>NSColorPanel</code>, <code>NSFontPanel</code></td></tr>
-    <tr><td><code>process</code></td><td class="scope">host</td>
-        <td><code>run(tool, args)</code> and <code>spawn</code> with streamed stdout, restricted to executables the Swift side listed at install. Exists because companion apps for CLIs need it. Marked <span class="status">sensitive</span> in the capability listing.</td>
-        <td><code>Process</code></td></tr>
   </table>
 
-  <div class="callout decision"><p><b>Decided.</b> Storage is not an extension. Persistence is a property
-     of the store, configured on the host, because the <code>localStorage</code> shim must work before
-     any extension is consulted.</p></div>
+  <div class="callout decision"><p><b>Decided.</b> Toolbar, menus, windows, files, notifications,
+     haptics, keychain, dialogs, process, and a page-visible updater are not standard extensions. Each is
+     a recipe in <a href="#recipes">section 8</a> and a few lines of Swift in the app that wants it. The
+     package stays small, the capability listing of any given app stays honest, and the work is done
+     where the developer can see it.</p></div>
 
-  <p><b>Considered and left out of the standard set for draft 1:</b> speech, location, camera and
-     microphone, Bluetooth, Shortcuts and App Intents, Spotlight indexing, printing, share sheet. Each is
-     a good example of a third-party or later extension. Printing is the most likely to move in.</p>
+  <p><b>The updater</b> still exists. It is a host facility configured in Swift (see
+     <a href="#updates">Updates</a>) with no page namespace. An app that wants to show update status in
+     the page writes a three-call extension over <code>host.updater</code>.</p>
 
   <!-- ============================================================ -->
   <h2 id="protocol">7. The extension protocol</h2>
@@ -415,7 +399,95 @@ public extension SashExtension {
 }</code></pre>
 
   <!-- ============================================================ -->
-  <h2 id="sources">8. Sources</h2>
+  <h2 id="recipes">8. Writing your own <small>the intended path</small></h2>
+  <p>The pattern is always the same. The page describes what it wants in an object. A Swift extension
+     receives the object and does the native work. If the native side will need to talk back later, the
+     extension hands the page a handle and reports through an event when something happens. The page
+     never learns how the work was done.</p>
+
+  <h3>8.1 Save something</h3>
+  <p>The page does not get a filesystem. It gets a call that means "here is a document".</p>
+  <pre><code>struct Documents: SashExtension {
+    static let namespace = "documents"
+    struct Save: Decodable { var id: String; var title: String; var body: String }
+
+    func register(in r: Sash.Registry) {
+        r.call("save") { (doc: Save) async throws -> String in
+            let url = try await DocumentStore.shared.write(doc)   // panel, container, iCloud: your call
+            return url.lastPathComponent
+        }
+        r.call("list") { () async throws -> [DocumentSummary] in
+            try await DocumentStore.shared.list()
+        }
+    }
+}</code></pre>
+  <pre><code>const name = await sash.documents.save({ id, title, body })</code></pre>
+
+  <h3>8.2 Notify, and hear back</h3>
+  <p>The page sends an object and gets back an endpoint. When the user acts on the notification, Swift
+     calls that endpoint, which reaches the page as an event. The page decides what happens; Swift decided
+     how it was shown.</p>
+  <pre><code>struct Alerts: SashExtension {
+    static let namespace = "alerts"
+    struct Post: Decodable { var title: String; var body: String; var actions: [String] }
+    struct Posted: Encodable { var id: String; var endpoint: String }
+
+    func register(in r: Sash.Registry) {
+        r.event("alerts:activated")
+        r.call("post") { (p: Post, session: Sash.Session) async throws -> Posted in
+            let id = UUID().uuidString
+            let content = UNMutableNotificationContent()
+            content.title = p.title; content.body = p.body
+            try await UNUserNotificationCenter.current().add(
+                UNNotificationRequest(identifier: id, content: content, trigger: nil))
+            NotificationRouter.shared.onActivate(id) { action in
+                session.emit("alerts:activated", ["id": id, "action": action])
+            }
+            return Posted(id: id, endpoint: "/_ext/alerts/\(id)")
+        }
+        r.route(.post, "/_ext/alerts/:id") { req in        // the same endpoint, reachable by fetch
+            NotificationRouter.shared.activate(req.params["id"]!, action: "opened")
+            return .ok
+        }
+    }
+}</code></pre>
+  <pre><code>const { id } = await sash.alerts.post({ title: "Tokyo", body: "It is 9 am", actions: ["Open"] })
+sash.on("alerts:activated", ({ id, action }) => router.go(`/clock/${id}`))</code></pre>
+  <p>The endpoint in the reply is optional. It exists so a page that prefers plain HTTP, or a second
+     session, can trigger the same activation without the event bus.</p>
+
+  <h3>8.3 A toolbar item</h3>
+  <p>No toolbar extension. The page reports context; Swift renders whatever toolbar it likes from it and
+     sends taps back as commands. The page's side is one line.</p>
+  <pre><code>sash.context.set({ title: city.name, commands: ["clock.add", "clock.remove"] })</code></pre>
+  <pre><code>struct ClockToolbar: ToolbarContent {
+    let context: Sash.Context?
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button("Add", systemImage: "plus") { context?.send("clock.add") }
+                .disabled(!(context?.commands.contains("clock.add") ?? false))
+        }
+    }
+}</code></pre>
+
+  <h3>8.4 A menu</h3>
+  <p>Same mechanism. <code>CommandMenu</code> in Swift, enablement from the focused session's context,
+     <code>session.send("clock.add")</code> delivering <code>sash:command</code>. Sash registers the Edit,
+     Window and Help menus; the rest is the app's.</p>
+
+  <h3>8.5 Anything with hardware or permissions</h3>
+  <p>Haptics, location, camera, speech: a call, a Codable argument, the framework call in the handler,
+     and a <code>requirements</code> entry naming the usage string so Sash fails at startup if the
+     <code>Info.plist</code> lacks it. Haptics is nine lines; see section 7.</p>
+
+  <h3>8.6 A companion for a command-line tool</h3>
+  <p>An extension that owns a <code>Process</code>, allow-lists the executable, streams stdout as an
+     SSE route, and exposes <code>run(args)</code>. This is what Vaelth.app's doctor and repair become.
+     It is a recipe and not a standard extension because the allow-list and the elevation policy are
+     the whole design, and they are the app's.</p>
+
+  <!-- ============================================================ -->
+  <h2 id="sources">9. Sources</h2>
   <p>A source answers a request for a path with a response or passes. The host holds an ordered chain
      and route handlers are consulted before it.</p>
   <table>
@@ -428,7 +500,7 @@ public extension SashExtension {
   </table>
 
   <!-- ============================================================ -->
-  <h2 id="state">9. State and storage</h2>
+  <h2 id="state">10. State and storage</h2>
   <ul>
     <li><b>Scopes.</b> Named partitions. <code>local</code> backs the shim. <code>settings</code> backs
         the Settings window. Developers add their own. Each scope names its persistence and its
@@ -448,7 +520,7 @@ public extension SashExtension {
   </ul>
 
   <!-- ============================================================ -->
-  <h2 id="updates">10. Updates</h2>
+  <h2 id="updates">11. Updates</h2>
   <table>
     <tr><th>Channel</th><th>Mechanism</th><th>Guards</th></tr>
     <tr><td>App bundle</td>
@@ -465,9 +537,13 @@ public extension SashExtension {
   </table>
   <p>Two artifacts, two versions, two CDN paths. A release may move either or both. The overlay keeps
      the previous layer for rollback and prunes older ones.</p>
+  <p>Both channels are configured on the host in Swift: <code>Sash.Host(web:, updates: .init(app:
+     .appcast(url), web: .manifest(url, publicKey: key)))</code>. There is no page namespace. Swift
+     observes <code>host.updater.status</code> and shows it however the app likes; an app that wants
+     the page to show it writes a three-call extension over that object.</p>
 
   <!-- ============================================================ -->
-  <h2 id="security">11. Security</h2>
+  <h2 id="security">12. Security</h2>
   <ul>
     <li>The page has an origin nothing else can share and no route to the network except through
         declared sources or the <code>net</code> extension.</li>
@@ -484,7 +560,7 @@ public extension SashExtension {
   </ul>
 
   <!-- ============================================================ -->
-  <h2 id="testing">12. Testing</h2>
+  <h2 id="testing">13. Testing</h2>
   <ul>
     <li><code>SashTesting</code> boots a host with a headless session and awaits ready, against the real
         bundle or a fixture directory.</li>
@@ -497,13 +573,12 @@ public extension SashExtension {
   </ul>
 
   <!-- ============================================================ -->
-  <h2 id="package">13. Package layout and platform</h2>
+  <h2 id="package">14. Package layout and platform</h2>
   <table>
     <tr><th>Product</th><th>Contents</th></tr>
-    <tr><td><code>Sash</code></td><td>Host, Session, SashView, Registry, Store, Sources, the JS runtime, the scheme handler, the core surface.</td></tr>
-    <tr><td><code>SashExtensions</code></td><td>The standard extensions from section 6.</td></tr>
-    <tr><td><code>SashUI</code></td><td><code>SashToolbar</code>, <code>SashCommands</code>, <code>SashSettings</code>, the disconnected view.</td></tr>
+    <tr><td><code>Sash</code></td><td>Host, Session, SashView, Registry, Store, Sources, the updater, the JS runtime, the scheme handler, the core surface, and the two standard extensions <code>Net</code> and <code>Clipboard</code>.</td></tr>
     <tr><td><code>SashTesting</code></td><td>The harness.</td></tr>
+    <tr><td><code>Examples/</code> <span class="status">not a product</span></td><td>The recipes from section 8 as compiling code in the template app: documents, alerts, toolbar, menus, haptics, a CLI companion, an update status panel. Copy, do not import.</td></tr>
   </table>
   <ul>
     <li><b>Platform.</b> macOS 14 or later in draft 1, for <code>@Observable</code> and
@@ -511,12 +586,12 @@ public extension SashExtension {
         port is a matter of a second view type and a second UI product, not a rewrite.</li>
     <li><b>Dependencies.</b> One: the Objective-C exception bridge for the torn-down
         <code>WKURLSchemeTask</code> race. Everything else is the SDK.</li>
-    <li><b>Skills.</b> Two, in <code>skills/</code>: one teaching the Swift half, one teaching the page
-        half. A template repo shows both with the world clock.</li>
+    <li><b>Skills.</b> Two, in <code>skills/</code>: one teaching the Swift half, with the recipes as its
+        examples, and one teaching the page half. A template repo shows both with the world clock.</li>
   </ul>
 
   <!-- ============================================================ -->
-  <h2 id="decisions">14. Decisions log</h2>
+  <h2 id="decisions">15. Decisions log</h2>
   <table>
     <tr><th>Decision</th><th>Why</th></tr>
     <tr><td>The JavaScript global is <code>sash</code>.</td><td>Distinctive, short, no collision with common page code.</td></tr>
@@ -527,19 +602,20 @@ public extension SashExtension {
     <tr><td>Routes win over sources.</td><td>So <code>/api</code> can be Swift while <code>/</code> is the bundle without configuration.</td></tr>
     <tr><td>Calls are generated, never hand-written.</td><td>The registry is the single source of truth, and <code>has()</code> is always right.</td></tr>
     <tr><td>No runtime permission prompts from Sash.</td><td>Installing an extension is the grant. The OS still prompts where it prompts.</td></tr>
-    <tr><td><code>process</code> is standard but marked sensitive.</td><td>Companion apps for CLIs are a target use; hiding it would only push people to write it worse.</td></tr>
+    <tr><td>Three standard extensions: state, net, clipboard.</td><td>They are what an ordinary page assumes exists. Everything else is intent, and intent belongs in the app's Swift where its policy is visible.</td></tr>
+    <tr><td>The page describes, Swift does, a handle comes back.</td><td>The recipe shape for everything from saving to notifications. It keeps the page portable and the capability listing honest.</td></tr>
+    <tr><td>No toolbar, menu or window extension.</td><td>Context plus commands already carries what those need, and the rendering is SwiftUI the developer would rather own.</td></tr>
+    <tr><td>The updater has no page namespace.</td><td>It is a host facility. Showing it in the page is a three-call extension.</td></tr>
     <tr><td>macOS 14 minimum.</td><td>Observable and identifier-based website data stores.</td></tr>
   </table>
 
   <!-- ============================================================ -->
-  <h2 id="open">15. Open questions</h2>
+  <h2 id="open">16. Open questions</h2>
   <ul>
     <li>Whether route handlers should use a small server type of our own or adopt an existing
         request-response vocabulary. Leaning own, kept tiny.</li>
-    <li>Whether <code>files</code> should offer a sandboxed app-container scope without panels, for
-        apps that only need their own documents.</li>
-    <li>How the toolbar extension and a Swift-authored toolbar coexist in one window. Probably the
-        page's items slot into a placement the Swift side chooses.</li>
+    <li>Whether the recipes should ship as a third SwiftPM product after all, once a few apps have
+        shown which ones stabilise.</li>
     <li>How many overlay versions to keep and whether the page may pin one.</li>
     <li>Whether a session may be suspended when its window is hidden for a long time, and what the page
         sees if so.</li>
