@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sash — specification</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1b; --muted: #6b6a66; --line: #e4e1da;
+    --accent: #7a4b1e; --card: #ffffff; --code: #f1efe9; --ok: #2f6b3a; --warn: #8a5a00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16161a; --fg: #ebe9e4; --muted: #9c9a94; --line: #2b2b31;
+            --accent: #d9a468; --card: #1e1e24; --code: #24242b; --ok: #7fc48d; --warn: #e0b45c; }
+  }
+  html { color-scheme: light dark; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 16px/1.55 -apple-system, "SF Pro Text", system-ui, sans-serif; }
+  main { max-width: 50rem; margin: 0 auto; padding: 3rem 1.25rem 6rem; }
+  h1 { font-size: 2rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 2rem; }
+  h2 { font-size: 1.3rem; margin: 3rem 0 .75rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
+  h2 small { color: var(--muted); font-weight: 400; font-size: .8rem; margin-left: .5rem; }
+  h3 { font-size: 1.05rem; margin: 1.75rem 0 .4rem; }
+  p, li { max-width: 46rem; }
+  ul, ol { padding-left: 1.2rem; }
+  li { margin: .35rem 0; }
+  b { font-weight: 600; }
+  code { font: .88em/1 "SF Mono", ui-monospace, Menlo, monospace; background: var(--code);
+         padding: .1em .35em; border-radius: 4px; }
+  pre { background: var(--code); padding: 1rem; border-radius: 8px; overflow-x: auto;
+        font: .84rem/1.5 "SF Mono", ui-monospace, Menlo, monospace; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .93rem; margin: 1rem 0; }
+  th, td { text-align: left; vertical-align: top; padding: .5rem .6rem; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+  td code { white-space: nowrap; }
+  .callout { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+             padding: .9rem 1.1rem; border-radius: 6px; margin: 1.25rem 0; }
+  .callout p { margin: 0; }
+  .decision { border-left-color: var(--ok); }
+  .decision b:first-child { color: var(--ok); }
+  nav.toc { columns: 2; column-gap: 2rem; font-size: .93rem; margin-bottom: 1rem; }
+  nav.toc a { color: var(--fg); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent); }
+  nav.toc ol { margin: 0; }
+  .scope { font-size: .8rem; color: var(--muted); }
+  a { color: var(--accent); }
+  .status { display: inline-block; font-size: .72rem; padding: .1em .5em; border-radius: 999px;
+            border: 1px solid var(--line); color: var(--muted); vertical-align: middle; margin-left: .4rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sash</h1>
+  <p class="sub">Specification, draft 1. A Swift package that hosts a single-page web app as a native
+     macOS app: your SwiftUI, your windows, your menus; the web app in a view; extensions as the only door
+     between them. See <a href="brainstorming.html">brainstorming</a> for where this came from.</p>
+
+  <nav class="toc"><ol>
+    <li><a href="#scope">Purpose and scope</a></li>
+    <li><a href="#concepts">Concepts</a></li>
+    <li><a href="#contract">The web contract</a></li>
+    <li><a href="#sessions">Sessions and many web views</a></li>
+    <li><a href="#core">The core surface</a></li>
+    <li><a href="#standard">Standard extensions</a></li>
+    <li><a href="#protocol">The extension protocol</a></li>
+    <li><a href="#sources">Sources</a></li>
+    <li><a href="#state">State and storage</a></li>
+    <li><a href="#updates">Updates</a></li>
+    <li><a href="#security">Security</a></li>
+    <li><a href="#testing">Testing</a></li>
+    <li><a href="#package">Package layout and platform</a></li>
+    <li><a href="#decisions">Decisions log</a></li>
+    <li><a href="#open">Open questions</a></li>
+  </ol></nav>
+
+  <!-- ============================================================ -->
+  <h2 id="scope">1. Purpose and scope</h2>
+  <p>Sash makes a web app a good citizen of macOS without pretending to be a cross-platform framework.
+     The developer writes a normal SwiftUI app and a normal single-page web app. Sash supplies the view
+     that hosts the page, the private scheme that serves it, the store that both sides share, and the
+     registry through which Swift grants the page capabilities one at a time.</p>
+  <ul>
+    <li><b>In scope.</b> Hosting, serving, streaming, state, the call bridge, context reporting, many
+        simultaneous web views, a standard set of extensions, two update channels, a test harness, and
+        skills that teach an AI both halves of the contract.</li>
+    <li><b>Out of scope.</b> Windows and Linux. A JavaScript UI framework. Anything that makes the page
+        reach the operating system without a Swift declaration.</li>
+  </ul>
+  <div class="callout"><p><b>Design rule.</b> The page talks HTTP and a small JavaScript object. Swift
+     decides who answers. Nothing the page can reach exists unless Swift declared it.</p></div>
+
+  <!-- ============================================================ -->
+  <h2 id="concepts">2. Concepts</h2>
+  <table>
+    <tr><th>Term</th><th>What it is</th><th>Cardinality</th></tr>
+    <tr><td><b>Host</b></td>
+        <td>An <code>@Observable</code> reference type owning the registry, the store, the sources, and
+            the list of live sessions. Created once, usually in the <code>App</code>.</td>
+        <td>One per app, more if you want isolated worlds.</td></tr>
+    <tr><td><b>Session</b></td>
+        <td>One <code>WKWebView</code> plus its context, its events stream, and its per-session
+            extensions. Has an id and an entry route.</td>
+        <td>As many as you like. One per <code>SashView</code>.</td></tr>
+    <tr><td><b>SashView</b></td>
+        <td>The SwiftUI view. An <code>NSViewRepresentable</code> that creates a session on appear and
+            ends it on disappear. Takes a host and an optional route.</td>
+        <td>Anywhere a view goes.</td></tr>
+    <tr><td><b>Source</b></td>
+        <td>Answers requests for the web layer's files: bundle, overlay, socket, remote, dev.</td>
+        <td>One chain per host.</td></tr>
+    <tr><td><b>Extension</b></td>
+        <td>A Swift type that declares calls, routes, streams, and scripts under a namespace, and hooks
+            session lifecycle.</td>
+        <td>Installed per host; instantiated per host or per session by its scope.</td></tr>
+    <tr><td><b>Store</b></td>
+        <td>The shared key-value state, Codable values, scoped by name, with pluggable persistence. Backs
+            <code>sash.state</code>, the <code>localStorage</code> shim, and Settings.</td>
+        <td>One per host.</td></tr>
+    <tr><td><b>Context</b></td>
+        <td>What a session's page is showing: title, view id, selection, dirty, commands it can handle.
+            Observable from Swift.</td>
+        <td>One per session.</td></tr>
+  </table>
+
+  <pre><code>@main struct WorldClock: App {
+    @State private var host = Sash.Host(web: .bundle(.module)) {
+        Toolbar()
+        Menus()
+        Windows()
+        Notifications()
+        Haptics()
+        Clocks(store: db)          // the app's own extension
+    }
+
+    var body: some Scene {
+        WindowGroup {                                   // main window
+            SashView(host)
+                .toolbar { SashToolbar(host) }
+                .navigationTitle(host.focused?.context.title ?? "World Clock")
+        }
+        WindowGroup(for: Sash.Route.self) { $route in   // any window the page asks for
+            SashView(host, route: route)
+        }
+        Settings { SashSettings(host) { ClockSettings() } }
+        .commands { SashCommands(host) }
+    }
+}</code></pre>
+
+  <!-- ============================================================ -->
+  <h2 id="contract">3. The web contract</h2>
+  <p>Everything the page can do is one of four things: fetch a URL, open an events stream, call a
+     declared function, or read and write shared state. The global is <code>window.sash</code>.</p>
+
+  <h3>3.1 Origin and paths</h3>
+  <ul>
+    <li>The page is served at <code>sash://app/</code>. The scheme is private to the process; the
+        authority is fixed so <code>location.host</code> is stable.</li>
+    <li><code>/_sash/*</code> is reserved for the framework. Everything else belongs to the developer's
+        sources and routes.</li>
+    <li>Route handlers registered from Swift take precedence over the source chain, so
+        <code>/api/...</code> can be Swift while <code>/</code> is the bundle.</li>
+  </ul>
+  <table>
+    <tr><th>Path</th><th>Purpose</th></tr>
+    <tr><td><code>/_sash/events</code></td><td>The per-session Server-Sent Events stream. Named events; JSON data.</td></tr>
+    <tr><td><code>/_sash/state</code></td><td>Bulk read of the store scopes the page may see, used at boot by the shim.</td></tr>
+    <tr><td><code>/_sash/capabilities</code></td><td>The installed namespaces and their calls, as JSON. Same data the JS table is generated from.</td></tr>
+    <tr><td><code>/_sash/sash.js</code></td><td>The runtime the page may import explicitly. It is also injected as a user script, so importing is optional.</td></tr>
+  </table>
+
+  <h3>3.2 Calls</h3>
+  <p>One <code>WKScriptMessageHandlerWithReply</code> named <code>sash</code>. A message is
+     <code>{ id, ns, name, args }</code>; the reply is <code>{ ok, value }</code> or
+     <code>{ ok: false, error: { code, message, data } }</code>. The generated table turns that into
+     <code>await sash.haptics.perform({ pattern: "levelChange" })</code>. Arguments and results are
+     JSON; Swift handlers see Codable types.</p>
+  <p>Error codes are fixed: <code>capability-missing</code>, <code>invalid-args</code>,
+     <code>denied</code>, <code>unavailable</code>, <code>failed</code>. A call into an uninstalled
+     namespace rejects with <code>capability-missing</code>; it is never <code>undefined</code>.</p>
+
+  <h3>3.3 Events</h3>
+  <p>The page opens <code>new EventSource("/_sash/events")</code>, or uses <code>sash.on(name, fn)</code>
+     which does the same. Swift pushes with <code>session.emit(name, payload)</code> for one session or
+     <code>host.broadcast(name, payload)</code> for all. Framework events are prefixed
+     <code>sash:</code>; developers own the rest of the namespace.</p>
+  <table>
+    <tr><th>Event</th><th>When</th></tr>
+    <tr><td><code>sash:state</code></td><td>A store key changed, from Swift or from another session. Carries scope, key, value.</td></tr>
+    <tr><td><code>sash:appearance</code></td><td>Light/dark, accent colour, or reduced-motion changed.</td></tr>
+    <tr><td><code>sash:focus</code></td><td>This session's window gained or lost key status.</td></tr>
+    <tr><td><code>sash:command</code></td><td>A menu or keyboard command the page declared it handles.</td></tr>
+    <tr><td><code>sash:capabilities</code></td><td>An extension was installed or removed after load.</td></tr>
+    <tr><td><code>sash:terminate</code></td><td>The app is about to quit. Flush now.</td></tr>
+    <tr><td><code>sash:message</code></td><td>Another session sent this one a message.</td></tr>
+  </table>
+
+  <h3>3.4 State</h3>
+  <p><code>sash.state.get(scope, key)</code>, <code>set</code>, <code>remove</code>, <code>watch</code>.
+     Synchronous reads against a local mirror hydrated at document start; writes are applied locally and
+     forwarded, so the page never waits. <code>localStorage</code> is shimmed onto the
+     <code>"local"</code> scope. Settings live in the <code>"settings"</code> scope. Which scopes a page
+     may see is declared on the host.</p>
+
+  <h3>3.5 Context</h3>
+  <p><code>sash.context.set({ title, subtitle, view, selection, dirty, commands })</code>. Partial
+     updates merge. Swift reads <code>session.context</code> as an observable struct. The
+     <code>commands</code> array names the <code>sash:command</code> identifiers this view will handle,
+     which is what enables the matching menu items.</p>
+
+  <h3>3.6 Session identity</h3>
+  <p><code>sash.session</code> exposes <code>{ id, route, isFocused }</code>. The entry route is also
+     the page's <code>location.pathname</code>, so an SPA router needs nothing special.</p>
+
+  <!-- ============================================================ -->
+  <h2 id="sessions">4. Sessions and many web views</h2>
+  <p>A host may have any number of live sessions. Three windows of the same page, a main window and an
+     inspector, a sheet with a form, a hidden worker session running background JavaScript: all
+     sessions, all equal.</p>
+
+  <h3>4.1 What is shared and what is not</h3>
+  <table>
+    <tr><th>Shared across sessions</th><th>Per session</th></tr>
+    <tr><td>
+      <ul>
+        <li>The store, so <code>localStorage</code> in one window is visible in another after
+            <code>sash:state</code></li>
+        <li>The source chain and route table</li>
+        <li>Host-scoped extensions</li>
+        <li>One <code>WKWebViewConfiguration</code> and scheme handler, so WebKit shares processes
+            where it can</li>
+        <li>The website data store, one per host</li>
+      </ul></td>
+      <td>
+      <ul>
+        <li>The <code>WKWebView</code></li>
+        <li>Context and the toolbar items derived from it</li>
+        <li>The events stream</li>
+        <li>Session-scoped extensions</li>
+        <li>The entry route and any query</li>
+      </ul></td></tr>
+  </table>
+
+  <h3>4.2 Lifecycle</h3>
+  <ol>
+    <li><b>Created.</b> <code>SashView</code> appears, or <code>host.makeSession(route:)</code> is called
+        directly. Session-scoped extensions are instantiated.</li>
+    <li><b>Loaded.</b> The document finished loading. The shim has hydrated.</li>
+    <li><b>Ready.</b> The page called <code>sash.ready()</code>. Only now does the toolbar trust context
+        and only now is an overlay update considered good.</li>
+    <li><b>Ended.</b> The view disappeared or the window closed. Extensions get a chance to flush. The web
+        view is released.</li>
+  </ol>
+  <p>Extensions receive each transition through <code>session(_:didChange:)</code>. There is no
+     suspended state in draft 1; a hidden window keeps running.</p>
+
+  <h3>4.3 Focus and command routing</h3>
+  <p><code>host.focused</code> is the session whose window is key. Menu commands are routed to the
+     focused session, and their enablement is read from that session's context. A session-scoped
+     toolbar renders only for its own window.</p>
+
+  <h3>4.4 Talking between sessions</h3>
+  <p><code>sash.sessions.list()</code> returns ids and routes. <code>sash.sessions.send(id, name,
+     payload)</code> and <code>sash.sessions.broadcast(name, payload)</code> deliver
+     <code>sash:message</code> events. Shared state is usually the better tool; messaging is for
+     transient coordination such as "scroll to this item".</p>
+
+  <h3>4.5 Opening more</h3>
+  <p>The page cannot open a window by itself. With the Windows extension installed it asks:
+     <code>sash.windows.open({ route: "/clock/tokyo", title, size })</code>. Swift fulfils that with
+     <code>openWindow(value: Sash.Route)</code> into the <code>WindowGroup(for:)</code> the app declared,
+     which creates a new <code>SashView</code> and therefore a new session. Sheets and panels work the
+     same way through the extension's <code>sheet</code> and <code>panel</code> calls. Swift can also do
+     all of this itself with no page involvement.</p>
+
+  <h3>4.6 Headless sessions</h3>
+  <p><code>host.makeSession(route:, hidden: true)</code> creates a session in an offscreen window. A
+     <code>WKWebView</code> outside a window does not load, so Sash owns that window. Used by the test
+     harness and by apps that want a JavaScript worker without UI.</p>
+
+  <!-- ============================================================ -->
+  <h2 id="core">5. The core surface <small>always present, deliberately small</small></h2>
+  <table>
+    <tr><th>Member</th><th>Purpose</th></tr>
+    <tr><td><code>sash.ready()</code></td><td>Marks the session ready. Idempotent.</td></tr>
+    <tr><td><code>sash.version</code></td><td><code>{ app, web, api }</code>. Two artifacts, two versions, plus the contract version.</td></tr>
+    <tr><td><code>sash.capabilities</code>, <code>sash.has(ns)</code></td><td>What is installed. Updated live.</td></tr>
+    <tr><td><code>sash.platform</code></td><td>OS version, appearance, accent colour, locale, reduced motion, high contrast. Also exposed as CSS custom properties on <code>:root</code>.</td></tr>
+    <tr><td><code>sash.state</code></td><td>The store, plus the <code>localStorage</code> shim.</td></tr>
+    <tr><td><code>sash.on</code>, <code>sash.off</code></td><td>Events.</td></tr>
+    <tr><td><code>sash.context</code></td><td>Reporting what the page shows.</td></tr>
+    <tr><td><code>sash.session</code>, <code>sash.sessions</code></td><td>Identity, listing, messaging.</td></tr>
+    <tr><td><code>sash.open(url)</code></td><td>Opens an external URL in the default browser. The only way out.</td></tr>
+    <tr><td><code>sash.log(level, ...)</code></td><td>Forwarded to the unified log under the app's subsystem.</td></tr>
+    <tr><td>JavaScript dialogs</td><td><code>alert</code>, <code>confirm</code>, <code>prompt</code> render as <code>NSAlert</code> sheets on the session's window.</td></tr>
+    <tr><td>Bundle assets</td><td>Plain <code>fetch</code> and <code>&lt;img&gt;</code> against the source chain.</td></tr>
+  </table>
+  <p>Not in core, on purpose: filesystem, network, clipboard beyond the Edit menu, notifications,
+     process launching, windows, menus, toolbar, haptics, keychain. Each is an extension.</p>
+  <p>Provided on the Swift side without asking: the Edit menu (a <code>WKWebView</code> is mute on cut,
+     copy and paste without one), the Window and Help menus, window restoration, appearance sync, and an
+     About panel showing both versions.</p>
+
+  <!-- ============================================================ -->
+  <h2 id="standard">6. Standard extensions <small>shipped in the package, installed by choice</small></h2>
+  <p>These are the ones Sash ships in draft 1. Each is a small type; none is privileged over an extension
+     a developer writes. The namespace is what the page sees; the scope says whether one instance serves
+     the host or each session gets its own.</p>
+  <table>
+    <tr><th>Namespace</th><th>Scope</th><th>Calls and behaviour</th><th>Native backing</th></tr>
+    <tr><td><code>toolbar</code></td><td class="scope">session</td>
+        <td><code>set(items)</code> with ids, titles, SF Symbols, primary flag, enabled. Item taps arrive as <code>sash:command</code>. <code>SashToolbar(host)</code> renders them for the current window.</td>
+        <td>SwiftUI <code>.toolbar</code></td></tr>
+    <tr><td><code>menus</code></td><td class="scope">host</td>
+        <td><code>set(menus)</code>: named top-level menus with items, key equivalents, enablement bound to focused context. <code>SashCommands(host)</code> renders them.</td>
+        <td><code>CommandMenu</code>, <code>CommandGroup</code></td></tr>
+    <tr><td><code>windows</code></td><td class="scope">host</td>
+        <td><code>open(route, options)</code>, <code>sheet</code>, <code>panel</code>, <code>close(id)</code>, <code>focus(id)</code>. Each open makes a session.</td>
+        <td><code>openWindow</code>, <code>WindowGroup(for:)</code>, sheets</td></tr>
+    <tr><td><code>files</code></td><td class="scope">host</td>
+        <td><code>openPanel(types, multiple)</code>, <code>savePanel(name, types)</code>, then <code>read(handle)</code>, <code>write(handle, bytes)</code>, <code>list(handle)</code>. Handles are opaque; the page never sees a path. Granted handles persist as security-scoped bookmarks by choice. Drops onto the view produce handles.</td>
+        <td><code>NSOpenPanel</code>, <code>NSSavePanel</code>, bookmarks</td></tr>
+    <tr><td><code>net</code></td><td class="scope">host</td>
+        <td><code>fetch(request)</code> proxied through <code>URLSession</code>, restricted to the hosts the Swift side listed at install. Streams bodies. Also installs a source-side allow-list so <code>fetch("https://...")</code> from the page works for those hosts only.</td>
+        <td><code>URLSession</code></td></tr>
+    <tr><td><code>notifications</code></td><td class="scope">host</td>
+        <td><code>requestPermission()</code>, <code>post(title, body, id, actions)</code>, <code>remove(id)</code>. Activation arrives as <code>sash:command</code>.</td>
+        <td><code>UNUserNotificationCenter</code></td></tr>
+    <tr><td><code>clipboard</code></td><td class="scope">host</td>
+        <td><code>readText()</code>, <code>writeText()</code>, <code>readImage()</code>, <code>writeImage()</code>.</td>
+        <td><code>NSPasteboard</code></td></tr>
+    <tr><td><code>haptics</code></td><td class="scope">host</td>
+        <td><code>perform(pattern)</code>: alignment, levelChange, generic.</td>
+        <td><code>NSHapticFeedbackManager</code></td></tr>
+    <tr><td><code>keychain</code></td><td class="scope">host</td>
+        <td><code>get(key)</code>, <code>set(key, value)</code>, <code>remove(key)</code> under one service the Swift side names. Values never enter the store.</td>
+        <td>Security framework</td></tr>
+    <tr><td><code>updater</code></td><td class="scope">host</td>
+        <td><code>check()</code>, <code>status()</code>, <code>apply()</code> for both channels; progress as events. Swift configures the channels; the page may only show and trigger.</td>
+        <td>See <a href="#updates">Updates</a></td></tr>
+    <tr><td><code>dialogs</code></td><td class="scope">session</td>
+        <td><code>alert(style, title, message, buttons)</code> beyond what <code>window.alert</code> offers; <code>color()</code>; <code>font()</code>.</td>
+        <td><code>NSAlert</code>, <code>NSColorPanel</code>, <code>NSFontPanel</code></td></tr>
+    <tr><td><code>process</code></td><td class="scope">host</td>
+        <td><code>run(tool, args)</code> and <code>spawn</code> with streamed stdout, restricted to executables the Swift side listed at install. Exists because companion apps for CLIs need it. Marked <span class="status">sensitive</span> in the capability listing.</td>
+        <td><code>Process</code></td></tr>
+  </table>
+
+  <div class="callout decision"><p><b>Decided.</b> Storage is not an extension. Persistence is a property
+     of the store, configured on the host, because the <code>localStorage</code> shim must work before
+     any extension is consulted.</p></div>
+
+  <p><b>Considered and left out of the standard set for draft 1:</b> speech, location, camera and
+     microphone, Bluetooth, Shortcuts and App Intents, Spotlight indexing, printing, share sheet. Each is
+     a good example of a third-party or later extension. Printing is the most likely to move in.</p>
+
+  <!-- ============================================================ -->
+  <h2 id="protocol">7. The extension protocol</h2>
+  <pre><code>public protocol SashExtension {
+    static var namespace: String { get }
+    static var scope: Sash.Scope { get }              // .host or .session
+    static var requirements: [Sash.Requirement] { get }  // entitlements, usage strings
+
+    func register(in registry: Sash.Registry)
+    func session(_ session: Sash.Session, didChange state: Sash.SessionState)
+}
+
+public extension SashExtension {
+    static var scope: Sash.Scope { .host }
+    static var requirements: [Sash.Requirement] { [] }
+    func session(_: Sash.Session, didChange _: Sash.SessionState) {}
+}</code></pre>
+
+  <p>What <code>register(in:)</code> can declare:</p>
+  <table>
+    <tr><th>Declaration</th><th>Appears to the page as</th><th>Notes</th></tr>
+    <tr><td><code>registry.call("name") { (args: A) async throws -&gt; R }</code></td>
+        <td><code>sash.&lt;ns&gt;.name(args)</code></td>
+        <td>Codable in and out. Main actor by default; <code>.detached</code> option for work off the main thread.</td></tr>
+    <tr><td><code>registry.route(.get, "/api/x") { req in Response }</code></td>
+        <td><code>fetch("/api/x")</code></td>
+        <td>Bodies are <code>AsyncSequence&lt;Data&gt;</code>. Takes precedence over sources.</td></tr>
+    <tr><td><code>registry.stream("/api/ticks") { emitter in }</code></td>
+        <td><code>new EventSource("/api/ticks")</code></td>
+        <td>A route specialised for SSE. Ends when the session ends.</td></tr>
+    <tr><td><code>registry.script(source, at: .documentStart)</code></td>
+        <td>JavaScript already running</td>
+        <td>For polyfills and shims. Main frame only.</td></tr>
+    <tr><td><code>registry.event("name")</code></td>
+        <td>Documented in capabilities</td>
+        <td>Declares events the extension emits so the JS table can type them.</td></tr>
+    <tr><td><code>registry.command("id", title:, key:)</code></td>
+        <td><code>sash:command</code></td>
+        <td>Registers a native menu command the page may claim in context.</td></tr>
+  </table>
+
+  <p>A session-scoped extension is instantiated by the registry with the session injected, so it can
+     reach the window and the web view. A host-scoped extension receives the session as a parameter in
+     its handlers. Extensions may depend on other extensions by namespace; the registry resolves order
+     and fails at startup if a dependency is missing.</p>
+
+  <p>The whole haptics extension, for scale:</p>
+  <pre><code>struct Haptics: SashExtension {
+    static let namespace = "haptics"
+    enum Pattern: String, Decodable { case alignment, levelChange, generic }
+    struct Perform: Decodable { var pattern: Pattern }
+
+    func register(in r: Sash.Registry) {
+        r.call("perform") { (a: Perform) in
+            NSHapticFeedbackManager.defaultPerformer
+                .perform(a.pattern.native, performanceTime: .now)
+        }
+    }
+}</code></pre>
+
+  <!-- ============================================================ -->
+  <h2 id="sources">8. Sources</h2>
+  <p>A source answers a request for a path with a response or passes. The host holds an ordered chain
+     and route handlers are consulted before it.</p>
+  <table>
+    <tr><th>Source</th><th>Serves</th><th>Notes</th></tr>
+    <tr><td><code>.bundle(Bundle, subdirectory:)</code></td><td>Files embedded in the app or package.</td><td>Correct MIME types, ETag from file hash, index fallback for SPA routers.</td></tr>
+    <tr><td><code>.overlay(directory)</code></td><td>An updated web layer.</td><td>Layered before the bundle. Switched atomically. See Updates.</td></tr>
+    <tr><td><code>.socket(path)</code></td><td>HTTP over a unix socket.</td><td>What Vaelth.app does. Streams. Health reported to the host.</td></tr>
+    <tr><td><code>.remote(URL, allow:)</code></td><td>An HTTPS origin.</td><td>Optional cache. For mixed online-and-local apps.</td></tr>
+    <tr><td><code>.dev(URL)</code></td><td>A dev server such as Vite.</td><td>Live reload passes through. Debug builds only.</td></tr>
+  </table>
+
+  <!-- ============================================================ -->
+  <h2 id="state">9. State and storage</h2>
+  <ul>
+    <li><b>Scopes.</b> Named partitions. <code>local</code> backs the shim. <code>settings</code> backs
+        the Settings window. Developers add their own. Each scope names its persistence and its
+        visibility.</li>
+    <li><b>Persistence.</b> <code>.memory</code>, <code>.userDefaults(suite)</code>,
+        <code>.file(url)</code> as JSON with atomic writes, <code>.ubiquitous</code> for iCloud key-value.
+        Keychain is deliberately not a store backend; secrets go through the keychain extension.</li>
+    <li><b>Visibility.</b> A scope is page-visible or Swift-only. Swift-only scopes still get observation;
+        they just never cross the bridge.</li>
+    <li><b>Consistency.</b> Last write wins. Every write is stamped with session id and sequence so a page
+        can ignore its own echo. There is no transaction API in draft 1.</li>
+    <li><b>SwiftUI.</b> <code>@Bindable var s = host.store.scope("settings")</code> gives bindings that
+        the page sees change through <code>sash:state</code>.</li>
+    <li><b>WebKit storage.</b> Cookies, IndexedDB, and Cache API stay in a per-host
+        <code>WKWebsiteDataStore(forIdentifier:)</code>. Sash does not shim them. Service workers do not
+        run on custom schemes, and Sash does not try to change that.</li>
+  </ul>
+
+  <!-- ============================================================ -->
+  <h2 id="updates">10. Updates</h2>
+  <table>
+    <tr><th>Channel</th><th>Mechanism</th><th>Guards</th></tr>
+    <tr><td>App bundle</td>
+        <td>Appcast JSON, download, verify, in-place swap, relaunch.</td>
+        <td>SHA-256 must match. Code signature must validate and match the running bundle's team.
+            Swapping ourselves bypasses Gatekeeper, so the updater does Gatekeeper's job.</td></tr>
+    <tr><td>Web layer</td>
+        <td>Manifest of files with hashes, signed. Downloaded into an overlay directory; switched in on
+            next load or on request.</td>
+        <td>Ed25519 signature verified with a key embedded in the app. Manifest declares
+            <code>requires.api</code>; the host refuses a manifest outside its range. If no session
+            reaches ready within a timeout after switching, the overlay is marked bad and the previous
+            layer is restored.</td></tr>
+  </table>
+  <p>Two artifacts, two versions, two CDN paths. A release may move either or both. The overlay keeps
+     the previous layer for rollback and prunes older ones.</p>
+
+  <!-- ============================================================ -->
+  <h2 id="security">11. Security</h2>
+  <ul>
+    <li>The page has an origin nothing else can share and no route to the network except through
+        declared sources or the <code>net</code> extension.</li>
+    <li>Navigation policy denies anything outside <code>sash://app</code>. External links go through
+        <code>sash.open</code>, which opens the default browser.</li>
+    <li>Calls, routes, and page-visible store scopes are the entire capability surface. The capability
+        listing is the permission story, and it can be shown in About.</li>
+    <li>Extensions marked sensitive, such as <code>process</code> and <code>files</code> with persisted
+        bookmarks, are labelled as such in the listing. Sash does not gate them at runtime; the developer
+        chose to install them.</li>
+    <li>Extension requirements are checked at startup against the bundle's entitlements and
+        <code>Info.plist</code>, and missing ones fail loudly.</li>
+    <li>Argument decoding is strict. An unknown field is <code>invalid-args</code>, not ignored.</li>
+  </ul>
+
+  <!-- ============================================================ -->
+  <h2 id="testing">12. Testing</h2>
+  <ul>
+    <li><code>SashTesting</code> boots a host with a headless session and awaits ready, against the real
+        bundle or a fixture directory.</li>
+    <li>Extensions can be exercised without WebKit by calling the registry directly with JSON, which
+        is how most extension tests should be written.</li>
+    <li>JavaScript-side assertions run through <code>session.evaluate</code> with a timeout and structured
+        results.</li>
+    <li>The <code>.dev</code> source plus an optional localhost mirror of the route table lets the page
+        be opened in Safari with real developer tools during development.</li>
+  </ul>
+
+  <!-- ============================================================ -->
+  <h2 id="package">13. Package layout and platform</h2>
+  <table>
+    <tr><th>Product</th><th>Contents</th></tr>
+    <tr><td><code>Sash</code></td><td>Host, Session, SashView, Registry, Store, Sources, the JS runtime, the scheme handler, the core surface.</td></tr>
+    <tr><td><code>SashExtensions</code></td><td>The standard extensions from section 6.</td></tr>
+    <tr><td><code>SashUI</code></td><td><code>SashToolbar</code>, <code>SashCommands</code>, <code>SashSettings</code>, the disconnected view.</td></tr>
+    <tr><td><code>SashTesting</code></td><td>The harness.</td></tr>
+  </table>
+  <ul>
+    <li><b>Platform.</b> macOS 14 or later in draft 1, for <code>@Observable</code> and
+        <code>WKWebsiteDataStore(forIdentifier:)</code>. The core avoids AppKit where it can so an iOS
+        port is a matter of a second view type and a second UI product, not a rewrite.</li>
+    <li><b>Dependencies.</b> One: the Objective-C exception bridge for the torn-down
+        <code>WKURLSchemeTask</code> race. Everything else is the SDK.</li>
+    <li><b>Skills.</b> Two, in <code>skills/</code>: one teaching the Swift half, one teaching the page
+        half. A template repo shows both with the world clock.</li>
+  </ul>
+
+  <!-- ============================================================ -->
+  <h2 id="decisions">14. Decisions log</h2>
+  <table>
+    <tr><th>Decision</th><th>Why</th></tr>
+    <tr><td>The JavaScript global is <code>sash</code>.</td><td>Distinctive, short, no collision with common page code.</td></tr>
+    <tr><td>Scheme <code>sash://app/</code>, framework paths under <code>/_sash/</code>.</td><td>A fixed authority keeps <code>location.host</code> stable; a reserved prefix keeps the developer's paths free.</td></tr>
+    <tr><td>The view is a session; the host is the object.</td><td>Full SwiftUI control and any number of web views fall out of it.</td></tr>
+    <tr><td>Storage is a host property, not an extension.</td><td>The shim must work before extensions run.</td></tr>
+    <tr><td>Menus and windows are Swift's; the page asks through extensions.</td><td>The page never gains chrome the developer did not grant.</td></tr>
+    <tr><td>Routes win over sources.</td><td>So <code>/api</code> can be Swift while <code>/</code> is the bundle without configuration.</td></tr>
+    <tr><td>Calls are generated, never hand-written.</td><td>The registry is the single source of truth, and <code>has()</code> is always right.</td></tr>
+    <tr><td>No runtime permission prompts from Sash.</td><td>Installing an extension is the grant. The OS still prompts where it prompts.</td></tr>
+    <tr><td><code>process</code> is standard but marked sensitive.</td><td>Companion apps for CLIs are a target use; hiding it would only push people to write it worse.</td></tr>
+    <tr><td>macOS 14 minimum.</td><td>Observable and identifier-based website data stores.</td></tr>
+  </table>
+
+  <!-- ============================================================ -->
+  <h2 id="open">15. Open questions</h2>
+  <ul>
+    <li>Whether route handlers should use a small server type of our own or adopt an existing
+        request-response vocabulary. Leaning own, kept tiny.</li>
+    <li>Whether <code>files</code> should offer a sandboxed app-container scope without panels, for
+        apps that only need their own documents.</li>
+    <li>How the toolbar extension and a Swift-authored toolbar coexist in one window. Probably the
+        page's items slot into a placement the Swift side chooses.</li>
+    <li>How many overlay versions to keep and whether the page may pin one.</li>
+    <li>Whether a session may be suspended when its window is hidden for a long time, and what the page
+        sees if so.</li>
+    <li>Whether to expose <code>WKWebView</code> directly to advanced users through an escape hatch on
+        the session. Leaning yes, documented as unsupported.</li>
+  </ul>
+</main>
+</body>
+</html>
