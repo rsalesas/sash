@@ -20,12 +20,18 @@ final class RegistryTests: XCTestCase {
         }
     }
 
+    var host: SashHost!
+
+    override func setUp() {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("sash-registry-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        host = SashHost(web: .directory(tmp), identifier: "sash.tests.registry", store: .memory) { Echo() }
+    }
+
+    /// The host's registry, with a session that never loads. Constructing a
+    /// web view is cheap; only loading needs a window.
     func makeRegistry() -> (Registry, Session) {
-        let r = Registry()
-        r.currentNamespace = Echo.namespace
-        Echo().register(in: r)
-        r.currentNamespace = nil
-        return (r, Session(id: "S1"))
+        (host.registry, host.makeSession())
     }
 
     func testDispatchSuccessAndErrors() async {
@@ -35,7 +41,7 @@ final class RegistryTests: XCTestCase {
         reply = await r.dispatch(namespace: "echo", name: "repeat", args: ["text": "ab"], session: s)
         XCTAssertEqual(reply["value"], "ab", "defaults apply")
         reply = await r.dispatch(namespace: "echo", name: "who", args: [:], session: s)
-        XCTAssertEqual(reply["value"], "S1")
+        XCTAssertEqual(reply["value"], .string(s.id))
         reply = await r.dispatch(namespace: "echo", name: "nothing", args: [:], session: s)
         XCTAssertEqual(reply, ["ok": true, "value": nil])
         reply = await r.dispatch(namespace: "echo", name: "slow", args: ["text": "x"], session: s)

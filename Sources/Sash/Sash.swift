@@ -22,4 +22,8 @@ public enum Sash {
 
     /// The framework's own version, reported to the page as `sash.version.sash`.
     public static let version = "0.1.0"
+
+    /// `Sash.Host` reads better at the call site; the class is `SashHost`
+    /// because Foundation already exports a `SashHost`.
+    public typealias Host = SashHost
 }
