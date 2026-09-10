@@ -35,6 +35,7 @@ let package = Package(
             name: "SashTests",
             dependencies: ["Sash"],
             path: "Tests/SashTests",
+            resources: [.copy("Fixtures")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
