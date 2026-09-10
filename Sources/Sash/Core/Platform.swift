@@ -46,3 +46,12 @@ extension NSColor {
         return String(format: "#%02x%02x%02x", r, g, b)
     }
 }
+
+
+/// What the app shows, as opposed to what the system asked for. `auto` is the
+/// system's own setting; the other two override it for this app alone, in the
+/// window chrome and in the page at once.
+public enum Appearance: String, Codable, Sendable, CaseIterable, Identifiable {
+    case auto, light, dark
+    public var id: String { rawValue }
+}

@@ -19,6 +19,21 @@ public final class SashHost {
     public private(set) var focused: Session?
     public private(set) var platform: Platform
 
+    /// The appearance this app shows. `auto` follows the system; the others
+    /// override it for the window chrome and the page together, and the choice
+    /// is remembered across launches. `SashView` reads it for the scene, and
+    /// `sash.platform.appearance` reports the resolved value to the page.
+    public var appearance: Appearance = .auto {
+        didSet {
+            guard oldValue != appearance else { return }
+            store.scope(Self.reservedScope).set("appearance", appearance.rawValue)
+            platformDidChange()
+        }
+    }
+
+    /// The scope Sash keeps its own settings in. Never visible to the page.
+    public static let reservedScope = "sash"
+
     @ObservationIgnored let sources: [any Source]
     @ObservationIgnored private(set) var extensions: [any SashExtension] = []
     @ObservationIgnored private(set) var sessionScopedTypes: [any SessionScopedExtension.Type] = []
@@ -51,7 +66,12 @@ public final class SashHost {
         self.registry = Registry()
         self.appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
         self.webVersion = SashHost.readWebVersion(web)
-        self.platform = Platform.current()
+        store.declare(ScopeConfiguration(Self.reservedScope, persistence: .userDefaults(), visibility: .swiftOnly))
+        // Property observers do not run during initialisation, so this loads
+        // the saved choice without writing it straight back.
+        let saved = Appearance(rawValue: store.scope(Self.reservedScope).get("appearance", default: "auto")) ?? .auto
+        self.appearance = saved
+        self.platform = Self.resolvedPlatform(saved)
 
         schemeHandler = SchemeHandler(host: self)
         dataStore = SashHost.makeDataStore(identifier: self.identifier)
@@ -293,8 +313,15 @@ public final class SashHost {
         }
     }
 
+    /// The system's reading, with this app's override applied on top.
+    private static func resolvedPlatform(_ appearance: Appearance) -> Platform {
+        var p = Platform.current()
+        if appearance != .auto { p.appearance = appearance.rawValue }
+        return p
+    }
+
     private func platformDidChange() {
-        let now = Platform.current()
+        let now = Self.resolvedPlatform(appearance)
         guard now != platform else { return }
         platform = now
         broadcast("sash:appearance", now)
