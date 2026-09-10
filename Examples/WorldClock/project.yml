@@ -19,6 +19,12 @@ settings:
     # App Sandbox with an ad-hoc signature, so debug builds run without it.
     CODE_SIGN_IDENTITY: "Sign to Run Locally"
     CODE_SIGN_STYLE: Manual
+  release:
+    # Set DEVELOPMENT_TEAM and this signs with your Developer ID; leave it
+    # empty and the release build signs to run locally, like debug.
+    CODE_SIGN_IDENTITY: "Developer ID Application"
+    CODE_SIGN_STYLE: Manual
+    OTHER_CODE_SIGN_FLAGS: "--timestamp --options=runtime"
 targets:
   WorldClock:
     type: application

@@ -9,26 +9,15 @@ struct WorldClockApp: App {
         Clipboard()
     }
 
-    /// "auto" means: don't override, let the system decide.
-    private var scheme: ColorScheme? {
-        switch host.store.scope("settings").get("appearance", default: "auto") {
-        case "light": return .light
-        case "dark": return .dark
-        default: return nil
-        }
-    }
-
     var body: some Scene {
         WindowGroup {
-            SashView(host)
-                .preferredColorScheme(scheme)
-                .frame(minWidth: 420, minHeight: 320)
-                .navigationTitle(host.focused?.context.title ?? "World Clock")
-                .navigationSubtitle(host.focused?.context.subtitle ?? "")
-                .toolbar { ClockToolbar(host: host) }
+            ClockWindow(host: host)
         }
         .defaultSize(width: 520, height: 440)
         .commands {
+            // The menu belongs to the app, so it goes to whichever window has
+            // focus. The toolbar belongs to a window, so it goes to that
+            // window's own session — see ClockWindow.
             CommandMenu("Clock") {
                 Button("Add City…") { host.send("clock.add") }
                     .keyboardShortcut("n")
@@ -40,7 +29,29 @@ struct WorldClockApp: App {
         }
 
         Settings {
-            ClockSettings(settings: host.store.scope("settings"))
+            ClockSettings(host: host, settings: host.store.scope("settings"))
         }
+    }
+}
+
+/// One window, bound to the session it owns rather than to `host.focused`,
+/// which is app-wide: that way the title and the toolbar stay right while the
+/// app is in the background, and a second window shows its own page.
+struct ClockWindow: View {
+    let host: Sash.Host
+    @State private var session: Session?
+
+    var body: some View {
+        SashView(host) { session = $0 }
+            .preferredColorScheme(host.colorScheme)
+            .frame(minWidth: 420, minHeight: 320)
+            .navigationTitle(session?.context.title ?? "World Clock")
+            .navigationSubtitle(session?.context.subtitle ?? "")
+            .toolbar { ClockToolbar(session: session) }
+            .task {
+                // This release has one setting. Anything else in the scope is
+                // left over from a release that had more, so it goes.
+                host.store.scope("settings").prune(keeping: ["showSeconds"])
+            }
     }
 }
