@@ -9,9 +9,19 @@ struct WorldClockApp: App {
         Clipboard()
     }
 
+    /// "auto" means: don't override, let the system decide.
+    private var scheme: ColorScheme? {
+        switch host.store.scope("settings").get("appearance", default: "auto") {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             SashView(host)
+                .preferredColorScheme(scheme)
                 .frame(minWidth: 420, minHeight: 320)
                 .navigationTitle(host.focused?.context.title ?? "World Clock")
                 .navigationSubtitle(host.focused?.context.subtitle ?? "")

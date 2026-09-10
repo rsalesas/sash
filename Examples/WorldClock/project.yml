@@ -29,6 +29,9 @@ targets:
       - path: web
         type: folder
         buildPhase: resources
+      # The app icon. AppIcon.svg beside it is the source drawing.
+      - path: AppIcon.icns
+        buildPhase: resources
     dependencies:
       - package: Sash
     settings:
@@ -41,5 +44,6 @@ targets:
         CFBundleName: WorldClock
         CFBundleDisplayName: WorldClock
         LSApplicationCategoryType: public.app-category.utilities
+        CFBundleIconFile: AppIcon
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         NSHumanReadableCopyright: ""

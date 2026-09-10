@@ -17,7 +17,16 @@ public struct Platform: Sendable, Hashable, Codable {
     @MainActor
     static func current() -> Platform {
         let v = ProcessInfo.processInfo.operatingSystemVersion
-        let appearance = NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? "dark" : "light"
+        // `NSApp` is nil until NSApplication is up, and a Host built in an App's
+        // property initialiser asks before then. Optional-chaining to nil would
+        // silently read as light on a dark system, so fall back to the global
+        // setting; `Host` re-snapshots once the app has finished launching.
+        let appearance: String
+        if let app = NSApp {
+            appearance = app.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? "dark" : "light"
+        } else {
+            appearance = UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark" ? "dark" : "light"
+        }
         return Platform(
             os: "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)",
             appearance: appearance,
