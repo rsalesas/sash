@@ -14,17 +14,20 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     ENABLE_USER_SCRIPT_SANDBOXING: false
     CODE_SIGN_STYLE: Automatic
-  debug:
-    # Un-sandboxed and ad-hoc signed. WebKit's WebContent child crashes under
-    # App Sandbox with an ad-hoc signature, so debug builds run without it.
-    CODE_SIGN_IDENTITY: "Sign to Run Locally"
-    CODE_SIGN_STYLE: Manual
-  release:
-    # Set DEVELOPMENT_TEAM and this signs with your Developer ID; leave it
-    # empty and the release build signs to run locally, like debug.
-    CODE_SIGN_IDENTITY: "Developer ID Application"
-    CODE_SIGN_STYLE: Manual
-    OTHER_CODE_SIGN_FLAGS: "--timestamp --options=runtime"
+  configs:
+    Debug:
+      # Un-sandboxed and ad-hoc signed. WebKit's WebContent child crashes under
+      # App Sandbox with an ad-hoc signature, so debug builds run without it.
+      CODE_SIGN_IDENTITY: "Sign to Run Locally"
+      CODE_SIGN_STYLE: Manual
+    Release:
+      # Signs with a Developer ID, hardened and timestamped, so the built app
+      # can be copied to /Applications and run. Manual signing needs the team
+      # named: put your own here, or drop these four lines to sign ad-hoc.
+      CODE_SIGN_IDENTITY: "Developer ID Application"
+      CODE_SIGN_STYLE: Manual
+      DEVELOPMENT_TEAM: 42SSLNY3WS
+      OTHER_CODE_SIGN_FLAGS: "--timestamp --options=runtime"
 targets:
   WorldClock:
     type: application
