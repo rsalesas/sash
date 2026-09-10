@@ -56,11 +56,18 @@ final class ExampleTests: XCTestCase {
         try await Harness.waitUntil { session.context.commands == ["clock.add", "clock.copy"] }
         XCTAssertEqual(session.context.subtitle, "1 city")
 
-        // Settings from Swift reach the page's checkbox and its formatting.
-        host.store.scope("settings").set("use24h", true)
-        try await Harness.waitUntil { try await session.evaluate("return document.getElementById('use24h').checked") == true }
-        let time = try await session.evaluate("return document.querySelector('.time').textContent")
-        XCTAssertFalse(time.stringValue?.lowercased().contains("m") ?? true, "24-hour has no AM/PM: \(time)")
+        // Settings from Swift reach the page's formatting.
+        host.store.scope("settings").set("showSeconds", false)
+        try await Harness.waitUntil {
+            let t = try await session.evaluate("return document.querySelector('.time').textContent")
+            return (t.stringValue ?? "").filter { $0 == ":" }.count == 1
+        }
+        // The hour cycle is the system's, reported by the platform.
+        let cycle = try await session.evaluate("return sash.platform.hourCycle")
+        XCTAssertEqual(cycle, .string(host.platform.hourCycle))
+        XCTAssertTrue(["h12", "h23"].contains(host.platform.hourCycle))
+        let emptyHidden = try await session.evaluate("return getComputedStyle(document.getElementById('empty')).display")
+        XCTAssertEqual(emptyHidden, "none", "the empty state hides when there are cities")
 
         // Copy goes through the Clipboard extension.
         let saved = NSPasteboard.general.string(forType: .string)

@@ -27,6 +27,7 @@ public final class SashHost {
     @ObservationIgnored private var dataStore: WKWebsiteDataStore!
     @ObservationIgnored private var appearanceObservation: NSKeyValueObservation?
     @ObservationIgnored private var colorObserver: (any NSObjectProtocol)?
+    @ObservationIgnored private var localeObserver: (any NSObjectProtocol)?
     @ObservationIgnored private(set) var networkPolicy: NetworkPolicy?
     @ObservationIgnored private var policyTask: Task<Void, Never>?
 
@@ -264,6 +265,11 @@ public final class SashHost {
         }
         colorObserver = NotificationCenter.default.addObserver(forName: NSColor.systemColorsDidChangeNotification,
                                                                object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.platformDidChange() }
+        }
+        // Language, region and the 24-hour switch all arrive here.
+        localeObserver = NotificationCenter.default.addObserver(forName: NSLocale.currentLocaleDidChangeNotification,
+                                                                object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.platformDidChange() }
         }
     }

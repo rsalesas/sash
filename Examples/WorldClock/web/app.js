@@ -1,11 +1,11 @@
 // World Clock. Cities live in localStorage, which Sash backs with the app's
-// UserDefaults; the 24-hour preference lives in the settings scope, which the
-// Settings window edits too. Commands arrive from the toolbar and the menu.
+// UserDefaults; "show seconds" lives in the settings scope, which the Settings
+// window edits too; 12- or 24-hour time follows the system, which Sash
+// reports in sash.platform. Commands arrive from the toolbar and the menu.
 (function () {
   const list = document.getElementById("clocks");
   const empty = document.getElementById("empty");
   const count = document.getElementById("count");
-  const use24h = document.getElementById("use24h");
   const dialog = document.getElementById("add");
   const form = document.getElementById("addForm");
 
@@ -19,10 +19,15 @@
   const zones = (Intl.supportedValuesOf ? Intl.supportedValuesOf("timeZone") : []);
   document.getElementById("zones").innerHTML = zones.map(z => `<option value="${z}">`).join("");
 
+  // The locale alone does not say whether the user wants 24-hour time; the
+  // system setting does, and Sash passes it through as platform.hourCycle.
+  const locale = () => inSash ? sash.platform.locale : undefined;
+  const hourCycle = () => inSash ? sash.platform.hourCycle : undefined;
   function fmt(tz) {
-    const opts = { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: !setting("use24h", false) };
+    const opts = { timeZone: tz, hour: "2-digit", minute: "2-digit" };
+    if (hourCycle()) opts.hourCycle = hourCycle();
     if (setting("showSeconds", true)) opts.second = "2-digit";
-    return new Intl.DateTimeFormat(undefined, opts).format(new Date());
+    return new Intl.DateTimeFormat(locale(), opts).format(new Date());
   }
   function offset(tz) {
     const now = new Date();
@@ -39,7 +44,6 @@
       <button class="remove" title="Remove" data-remove="${i}">✕</button></li>`).join("");
     empty.hidden = cities.length > 0;
     count.textContent = cities.length ? `${cities.length} ${cities.length === 1 ? "city" : "cities"}` : "";
-    use24h.checked = setting("use24h", false);
     if (inSash) sash.context.set({ title: "World Clock", subtitle: cities.length ? `${cities.length} ${cities.length === 1 ? "city" : "cities"}` : "", commands: cities.length ? ["clock.add", "clock.copy"] : ["clock.add"] });
   }
   function tick() { list.querySelectorAll(".time").forEach(el => { el.textContent = fmt(el.dataset.tz); }); }
@@ -64,14 +68,12 @@
     const b = e.target.closest("[data-remove]"); if (!b) return;
     cities.splice(Number(b.dataset.remove), 1); save();
   });
-  use24h.addEventListener("change", () => {
-    if (inSash) sash.state.set("settings", "use24h", use24h.checked); else render();
-  });
   window.addEventListener("keydown", (e) => { if (e.key === "n" && e.metaKey && !inSash) { e.preventDefault(); openAdd(); } });
 
   if (inSash) {
     sash.on("sash:command", (c) => { if (c.id === "clock.add") openAdd(); if (c.id === "clock.copy") copyAll(); });
     sash.state.watch("settings", render);                 // the Settings window
+    sash.on("sash:appearance", render);                  // the system's 24-hour switch, language, appearance
     window.addEventListener("storage", () => { cities = load(); render(); });  // another window
   }
 

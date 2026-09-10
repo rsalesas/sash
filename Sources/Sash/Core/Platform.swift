@@ -6,7 +6,11 @@ public struct Platform: Sendable, Hashable, Codable {
     public var os: String
     public var appearance: String
     public var accent: String
+    /// BCP 47, for `Intl`.
     public var locale: String
+    /// `"h12"` or `"h23"`, from the system's 24-hour time setting. Pass it to
+    /// `Intl.DateTimeFormat` as `hourCycle`; the locale alone does not carry it.
+    public var hourCycle: String
     public var reducedMotion: Bool
     public var highContrast: Bool
 
@@ -18,7 +22,8 @@ public struct Platform: Sendable, Hashable, Codable {
             os: "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)",
             appearance: appearance,
             accent: NSColor.controlAccentColor.hexString,
-            locale: Locale.current.identifier,
+            locale: Locale.current.identifier(.bcp47),
+            hourCycle: Locale.current.hourCycle == .zeroToTwentyThree || Locale.current.hourCycle == .oneToTwentyFour ? "h23" : "h12",
             reducedMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
             highContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         )

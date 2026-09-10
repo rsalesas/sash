@@ -286,7 +286,7 @@
     <tr><td><code>sash.ready()</code></td><td>Marks the session ready. Idempotent.</td></tr>
     <tr><td><code>sash.version</code></td><td><code>{ app, web, api }</code>. Two artifacts, two versions, plus the contract version.</td></tr>
     <tr><td><code>sash.capabilities</code>, <code>sash.has(ns)</code></td><td>What is installed. Updated live.</td></tr>
-    <tr><td><code>sash.platform</code></td><td>OS version, appearance, accent colour, locale, reduced motion, high contrast. Also exposed as CSS custom properties on <code>:root</code>.</td></tr>
+    <tr><td><code>sash.platform</code></td><td>OS version, appearance, accent colour, BCP 47 locale, hour cycle (<code>h12</code>/<code>h23</code> from the system's 24-hour setting, which the locale alone does not carry), reduced motion, high contrast. Appearance and accent are also CSS custom properties on <code>:root</code>. Changes arrive as <code>sash:appearance</code> with the whole object.</td></tr>
     <tr><td><code>sash.state</code></td><td>The store, plus the <code>localStorage</code> shim.</td></tr>
     <tr><td><code>sash.on</code>, <code>sash.off</code></td><td>Events.</td></tr>
     <tr><td><code>sash.context</code></td><td>Reporting what the page shows.</td></tr>
