@@ -15,8 +15,10 @@
 }
 
 html, body { height: 100%; margin: 0; overflow: hidden; }
+/* Nothing in the window is selectable, so the text cursor would be claiming
+   something the app cannot do; the fields in the sheet get it back below. */
 body { background: var(--bg); color: var(--fg); font: 14px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased; -webkit-user-select: none; }
+  -webkit-font-smoothing: antialiased; -webkit-user-select: none; cursor: default; }
 main { height: 100%; display: flex; flex-direction: column; }
 
 /* The scroller is a sibling of the bar, so the bar cannot scroll away, and it
@@ -31,7 +33,7 @@ main { height: 100%; display: flex; flex-direction: column; }
 .clocks li::after { content: ""; position: absolute; left: 16px; right: 10px; bottom: 0;
   height: 1px; background: var(--line); }
 .clocks li:last-child::after { display: none; }
-.clocks li:hover { background: var(--hover); }
+.clocks:not(.reordering) li:hover { background: var(--hover); }
 
 .name { display: block; font-size: 13.5px; font-weight: 600; letter-spacing: -.006em; }
 .zone { display: block; font-size: 10.5px; color: var(--faint); margin-top: 2px; }
@@ -49,9 +51,17 @@ main { height: 100%; display: flex; flex-direction: column; }
 .mark { position: absolute; top: -4px; width: 2px; height: 14px; margin-left: -1px; pointer-events: none;
   border-radius: 1px; background: var(--fg); box-shadow: 0 0 0 1.5px var(--bg);
   transition: width .12s ease, height .12s ease, top .12s ease, margin-left .12s ease; }
-.clocks li:hover .mark, .clocks li.scrubbing .mark { width: 5px; height: 21px; top: -7.5px;
+.clocks:not(.reordering) li:hover .mark, .clocks li.scrubbing .mark { width: 5px; height: 21px; top: -7.5px;
   margin-left: -2.5px; border-radius: 2.5px; box-shadow: 0 0 0 1.5px var(--hover); }
 .clocks li.scrubbing { background: var(--hover); }
+
+/* A row being dragged lifts off the list; the rows it displaces slide. */
+.clocks li.lifted { background: var(--hover); border-radius: 8px; z-index: 2;
+  box-shadow: 0 8px 22px rgba(0,0,0,.30); }
+.clocks li.lifted::after { display: none; }
+.clocks.reordering { cursor: grabbing; }
+.clocks.reordering .band { pointer-events: none; }
+.clocks.reordering .remove { visibility: hidden; }
 
 .nowbtn { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 7px; border-radius: 5px;
   border: 1px solid var(--chrome-line); background: var(--bg); color: var(--fg); font: inherit; font-size: 11.5px;
@@ -70,7 +80,7 @@ main { height: 100%; display: flex; flex-direction: column; }
 /* The slot is always reserved, so revealing the control never shifts the row. */
 .remove { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px;
   padding: 0; border: 0; border-radius: 50%; background: none; color: var(--faint); visibility: hidden; }
-.clocks li:hover .remove { visibility: visible; }
+.clocks:not(.reordering) li:hover .remove { visibility: visible; }
 .remove:hover { color: var(--fg); }
 
 .empty { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center;
@@ -93,7 +103,8 @@ dialog::backdrop { background: rgba(0,0,0,.25); }
 dialog h2 { margin: 0 0 12px; font-size: 15px; }
 dialog label { display: grid; gap: 4px; margin: 8px 0; font-size: 12px; color: var(--muted); }
 dialog input { font: inherit; font-size: 14px; color: var(--fg); background: var(--row);
-  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+  cursor: text; -webkit-user-select: text; }
 dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 14px 0 0; padding: 0; }
 dialog button { font: inherit; padding: 5px 14px; border-radius: 6px; border: 1px solid var(--line);
   background: var(--row); color: var(--fg); }

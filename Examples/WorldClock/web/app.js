@@ -7,6 +7,8 @@
   const empty = document.getElementById("empty");
   const localEl = document.getElementById("local");
   const todayEl = document.getElementById("today");
+  const nameInput = document.getElementById("name");
+  const tzInput = document.getElementById("tz");
   const nowBtn = document.getElementById("now");
   const dialog = document.getElementById("add");
   const form = document.getElementById("addForm");
@@ -89,16 +91,18 @@
     };
   }
 
+  const readable = (tz) => tz.replace(/_/g, " ");
   const esc = (s) => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
   const BACK = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5h10a6 6 0 1 1-6 6"/><path d="M3.5 4v4.5H8"/></svg>';
   const X = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
 
   function render() {
+    if (lift) return;
     const now = nowish();
     list.innerHTML = cities.map((c, i) => {
       const t = clock(c.tz, now), tag = dayTag(c.tz, now);
-      return `<li data-tz="${esc(c.tz)}">
-        <span><span class="name">${esc(c.name)}</span><span class="zone">${esc(c.tz)}</span></span>
+      return `<li data-tz="${esc(c.tz)}" data-i="${i}">
+        <span><span class="name">${esc(c.name)}</span><span class="zone">${esc(readable(c.tz))}</span></span>
         <span><span class="band"><span class="mark" style="left: ${markLeft(c.tz, now)}"></span></span></span>
         <span class="rhs"><span class="time"><span class="hm">${t.hm}</span><span class="sec">${t.sec}</span><span class="ap">${t.ap}</span></span>
         <span class="off"><span class="ofs">${offset(c.tz, now)}</span> <span class="dayt">${tag}</span></span></span>
@@ -160,25 +164,139 @@
     at = real - (real % 60000) + (mins - w) * 60000;
     tick();
   }
+  // ---- reordering ---------------------------------------------------------
+  // Rows move in the DOM as the pointer crosses them, so the list you see
+  // during the move is the list you get; the array is rewritten on drop.
+  let lift = null;   // { li, snapshot }
+  const rowAt = (i) => list.children[i];
+  const rowIndex = (li) => Array.prototype.indexOf.call(list.children, li);
+
+  // A row interrupted mid-slide is measured where it currently looks, so the
+  // new slide continues from there; one pending frame per row, or overlapping
+  // moves stack up and flicker.
+  const pending = new WeakMap();
+  function slide(work) {
+    const before = new Map();
+    for (const li of list.children) before.set(li, li.getBoundingClientRect().top);
+    work();
+    for (const li of list.children) {
+      if (lift && li === lift.li) continue;   // the held row goes straight to its slot
+      const d = before.get(li) - li.getBoundingClientRect().top;
+      if (!d) continue;
+      if (pending.has(li)) cancelAnimationFrame(pending.get(li));
+      li.style.transition = "none";
+      li.style.transform = `translateY(${d}px)`;
+      pending.set(li, requestAnimationFrame(() => {
+        pending.delete(li);
+        li.style.transition = "transform .16s ease";
+        li.style.transform = "";
+      }));
+    }
+  }
+  function moveTo(index) {
+    const rows = Array.prototype.slice.call(list.children);
+    const to = Math.min(rows.length - 1, Math.max(0, index));
+    if (rows[to] === lift.li) return;
+    const from = rows.indexOf(lift.li);
+    slide(() => list.insertBefore(lift.li, to > from ? rows[to].nextSibling : rows[to]));
+  }
+  function indexAt(clientY) {
+    const n = list.children.length;
+    if (!n) return 0;
+    // Layout geometry, never getBoundingClientRect: a row mid-slide carries a
+    // transform, and hit-testing against where it currently *looks* makes the
+    // target flip back and forth every frame — the row sticks and the list
+    // flashes. offsetHeight ignores transforms, so this stays still.
+    const h = list.children[0].offsetHeight || 1;
+    const y = clientY - list.getBoundingClientRect().top + list.scrollTop;
+    return Math.max(0, Math.min(n - 1, Math.floor(y / h)));
+  }
+  function pickUp(li) {
+    lift = { li, snapshot: cities.slice() };
+    li.classList.add("lifted");
+    list.classList.add("reordering");
+  }
+  function drop(commit) {
+    if (!lift) return;
+    const snapshot = lift.snapshot;
+    const order = Array.prototype.map.call(list.children, (el) => +el.dataset.i);
+    lift.li.classList.remove("lifted");
+    list.classList.remove("reordering");
+    for (const el of list.children) { el.style.transition = ""; el.style.transform = ""; }
+    lift = null;
+    if (commit) { cities = order.map((i) => snapshot[i]); save(); }
+    else { cities = snapshot; render(); }
+  }
+
   list.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
     const band = e.target.closest(".band");
-    if (!band) return;
+    if (band) {
+      e.preventDefault();
+      const li = band.closest("li"), tz = li.dataset.tz, rect = band.getBoundingClientRect();
+      li.classList.add("scrubbing");
+      const move = (ev) => scrubTo(ev.clientX, rect, tz, ev.altKey);
+      const up = () => {
+        window.removeEventListener("mousemove", move);
+        window.removeEventListener("mouseup", up);
+        window.removeEventListener("blur", up);
+        li.classList.remove("scrubbing");
+      };
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", up);
+      // Released over another app, no mouseup ever arrives; losing focus ends it.
+      window.addEventListener("blur", up);
+      scrubTo(e.clientX, rect, tz, e.altKey);
+      return;
+    }
+    if (lift || e.target.closest(".remove")) return;
+    const li = e.target.closest("li");
+    if (!li) return;
     e.preventDefault();
-    const li = band.closest("li"), tz = li.dataset.tz, rect = band.getBoundingClientRect();
-    li.classList.add("scrubbing");
-    const move = (ev) => scrubTo(ev.clientX, rect, tz, ev.altKey);
+    const startY = e.clientY;
+    let started = false;
+    const move = (ev) => {
+      // A click is not a drag: wait for real travel before lifting the row.
+      if (!started && Math.abs(ev.clientY - startY) < 4) return;
+      if (!started) { started = true; pickUp(li); }
+      moveTo(indexAt(ev.clientY));
+    };
     const up = () => {
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
-      li.classList.remove("scrubbing");
+      window.removeEventListener("blur", up);
+      if (started) drop(true);
     };
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
-    scrubTo(e.clientX, rect, tz, e.altKey);
+    window.addEventListener("blur", up);
+  });
+
+  // Double-click opens the row for editing — the same sheet as adding, with
+  // the city's name and zone already in it.
+  list.addEventListener("dblclick", (e) => {
+    if (e.target.closest(".band") || e.target.closest(".remove")) return;
+    const li = e.target.closest("li");
+    if (li) openDialog(+li.dataset.i);
   });
   nowBtn.addEventListener("click", () => { at = null; tick(); });
 
-  function openAdd() { form.reset(); dialog.showModal(); document.getElementById("name").focus(); }
+  // Adding and editing are the same sheet; `editing` says which.
+  let editing = null;
+  function openDialog(i) {
+    editing = typeof i === "number" ? i : null;
+    const c = editing == null ? null : cities[editing];
+    form.reset();
+    nameInput.value = c ? c.name : "";
+    tzInput.value = c ? c.tz : "";
+    document.getElementById("dialogTitle").textContent = c ? "Edit city" : "Add a city";
+    document.getElementById("dialogPrimary").textContent = c ? "Save" : "Add";
+    dialog.showModal();
+    nameInput.focus();
+    nameInput.select();
+  }
+  const openAdd = () => openDialog(null);
+  dialog.addEventListener("close", () => { editing = null; });
   function copyAll() {
     const now = nowish();
     const text = cities.map(c => { const t = clock(c.tz, now); return `${c.name}: ${t.hm}${t.sec}${t.ap}`; }).join("\n");
@@ -187,11 +305,13 @@
   }
 
   form.addEventListener("submit", () => {
-    const name = document.getElementById("name").value.trim();
-    const tz = document.getElementById("tz").value.trim();
+    const name = nameInput.value.trim(), tz = tzInput.value.trim();
     if (!name || !tz) return;
     try { new Intl.DateTimeFormat(undefined, { timeZone: tz }); } catch { alert(`"${tz}" is not a time zone`); return; }
-    cities.push({ name, tz }); save();
+    if (editing == null) cities.push({ name, tz });
+    else cities[editing] = { name, tz };
+    editing = null;
+    save();
   });
   document.getElementById("cancel").addEventListener("click", () => dialog.close());
   list.addEventListener("click", (e) => {

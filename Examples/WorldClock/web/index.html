@@ -19,13 +19,14 @@
 
 <dialog id="add">
   <form method="dialog" id="addForm">
-    <h2>Add a city</h2>
+    <h2 id="dialogTitle">Add a city</h2>
     <label>Name <input id="name" required autocomplete="off" placeholder="Tokyo"></label>
-    <label>Time zone <input id="tz" list="zones" required placeholder="Asia/Tokyo"></label>
+    <label>Time zone <input id="tz" list="zones" required placeholder="Asia/Tokyo"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
     <datalist id="zones"></datalist>
     <menu>
       <button value="cancel" type="button" id="cancel">Cancel</button>
-      <button value="add" class="primary">Add</button>
+      <button value="add" class="primary" id="dialogPrimary">Add</button>
     </menu>
   </form>
 </dialog>
