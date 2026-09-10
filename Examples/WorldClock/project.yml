@@ -45,5 +45,7 @@ targets:
         CFBundleDisplayName: WorldClock
         LSApplicationCategoryType: public.app-category.utilities
         CFBundleIconFile: AppIcon
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         NSHumanReadableCopyright: ""
