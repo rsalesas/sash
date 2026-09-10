@@ -57,7 +57,11 @@ public final class Session: Identifiable {
     // MARK: Loading
 
     func load() {
-        webView.load(URLRequest(url: route.url))
+        Task { @MainActor in
+            await host.waitForNetworkPolicy()
+            guard state == .created, webView.url == nil else { return }
+            webView.load(URLRequest(url: route.url))
+        }
     }
 
     /// Reloads the page. The boot snapshot is regenerated on the way.

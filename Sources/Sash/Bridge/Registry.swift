@@ -161,6 +161,16 @@ public final class Registry {
         }))
     }
 
+    /// For the package's own extensions, which may live under the reserved
+    /// prefix. Not public on purpose.
+    func reservedDetachedRoute(_ method: Request.Method?, _ pattern: String,
+                               _ handler: @escaping @Sendable (Request) async throws -> Response) {
+        let was = allowsReservedRoutes
+        allowsReservedRoutes = true
+        addRoute(method, pattern, .detached(handler))
+        allowsReservedRoutes = was
+    }
+
     private func addRoute(_ method: Request.Method?, _ pattern: String, _ handler: RouteHandler) {
         let ns = namespace
         precondition(pattern.hasPrefix("/"), "Sash: route pattern must start with /: \(pattern)")

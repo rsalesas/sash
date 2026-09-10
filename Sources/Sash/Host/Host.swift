@@ -28,7 +28,8 @@ public final class SashHost {
     @ObservationIgnored private let processPool = WKProcessPool()
     @ObservationIgnored private var appearanceObservation: NSKeyValueObservation?
     @ObservationIgnored private var colorObserver: (any NSObjectProtocol)?
-    @ObservationIgnored var networkPolicy: NetworkPolicy?
+    @ObservationIgnored private(set) var networkPolicy: NetworkPolicy?
+    @ObservationIgnored private var policyTask: Task<Void, Never>?
 
     public let appVersion: String
     public let webVersion: String
@@ -54,6 +55,36 @@ public final class SashHost {
 
         store.onChange = { [weak self] change in self?.fanOut(change) }
         observeAppearance()
+        recompileNetworkPolicy()
+    }
+
+    // MARK: Network policy
+
+    /// The allow list in force: the `Net` extension's, or nothing.
+    public var networkAllowList: NetAllowList {
+        (extensions.first { $0 is Net } as? Net)?.allowList ?? NetAllowList([])
+    }
+
+    private func recompileNetworkPolicy() {
+        let policy = NetworkPolicy(allowList: networkAllowList)
+        policyTask?.cancel()
+        policyTask = Task { @MainActor [weak self] in
+            await policy.compile()
+            guard let self, !Task.isCancelled else { return }
+            self.networkPolicy = policy
+            if let list = policy.ruleList {
+                for session in self.sessions {
+                    session.webView.configuration.userContentController.removeAllContentRuleLists()
+                    session.webView.configuration.userContentController.add(list)
+                }
+            }
+        }
+    }
+
+    /// Resolves once the network rule list is compiled and installed. Loads
+    /// wait for this so no page ever runs without it.
+    func waitForNetworkPolicy() async {
+        await policyTask?.value
     }
 
     // MARK: Extensions
@@ -83,6 +114,7 @@ public final class SashHost {
             registry.currentNamespace = nil
             extensions.append(ext)
         }
+        if ext is Net { recompileNetworkPolicy() }
         if !sessions.isEmpty {
             let caps = registry.capabilities
             for s in sessions { s.emit("sash:capabilities", caps) }
