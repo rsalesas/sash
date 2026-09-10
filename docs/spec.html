@@ -53,7 +53,7 @@
 <body>
 <main>
   <h1>Sash</h1>
-  <p class="sub">Specification, draft 3, matching milestone 1 as built. A Swift package that hosts a single-page web app as a native
+  <p class="sub">Specification, draft 4, matching milestones 1 and 2 as built. A Swift package that hosts a single-page web app as a native
      macOS app: your SwiftUI, your windows, your menus; the web app in a view; extensions as the only door
      between them. See <a href="brainstorming.html">brainstorming</a> for where this came from.</p>
 
@@ -493,11 +493,12 @@ sash.on("alerts:activated", ({ id, action }) => router.go(`/clock/${id}`))</code
      and route handlers are consulted before it.</p>
   <table>
     <tr><th>Source</th><th>Serves</th><th>Notes</th></tr>
-    <tr><td><code>.bundle(Bundle, subdirectory:)</code></td><td>Files embedded in the app or package.</td><td>Correct MIME types, ETag from file hash, index fallback for SPA routers.</td></tr>
-    <tr><td><code>.overlay(directory)</code></td><td>An updated web layer.</td><td>Layered before the bundle. Switched atomically. See Updates.</td></tr>
-    <tr><td><code>.socket(path)</code></td><td>HTTP over a unix socket.</td><td>What Vaelth.app does. Streams. Health reported to the host.</td></tr>
-    <tr><td><code>.remote(URL, allow:)</code></td><td>An HTTPS origin.</td><td>Optional cache. For mixed online-and-local apps.</td></tr>
-    <tr><td><code>.dev(URL)</code></td><td>A dev server such as Vite.</td><td>Live reload passes through. Debug builds only.</td></tr>
+    <tr><td><code>.bundle(Bundle, subdirectory:)</code>, <code>.directory(URL)</code></td><td>Files embedded in the app or package, or any directory.</td><td>Correct MIME types, ETag from file hash, <code>index.html</code> fallback for SPA routers, traversal refused.</td></tr>
+    <tr><td>Overlay</td><td>An updated web layer.</td><td>Not a case you name: configuring a web update channel puts a switchable <code>OverlaySource</code> ahead of the chain. See Updates.</td></tr>
+    <tr><td><code>.socket(path:, hostHeader:)</code></td><td>HTTP over a unix socket.</td><td>What Vaelth.app does. A hand-written HTTP/1.1 client streams bodies; <code>Origin</code> and hop-by-hop headers are stripped; an unreachable backend is a 503 with <code>backend-unavailable</code>, not a 404.</td></tr>
+    <tr><td><code>.remote(URL)</code></td><td>A plain-HTTP server on a port.</td><td>Same client over TCP. TLS origins belong behind <code>Net</code>.</td></tr>
+    <tr><td><code>.dev(URL)</code></td><td>A dev server such as Vite.</td><td><code>.remote</code> with <code>Cache-Control: no-store</code>, and the server's host is added to the network allow list so live reload connects.</td></tr>
+    <tr><td><code>.layered([WebLayer])</code></td><td>Several of the above in order.</td><td>First to answer wins.</td></tr>
   </table>
 
   <!-- ============================================================ -->
@@ -506,9 +507,11 @@ sash.on("alerts:activated", ({ id, action }) => router.go(`/clock/${id}`))</code
     <li><b>Scopes.</b> Named partitions. <code>local</code> backs the shim. <code>settings</code> backs
         the Settings window. Developers add their own. Each scope names its persistence and its
         visibility.</li>
-    <li><b>Persistence.</b> <code>.memory</code>, <code>.userDefaults(suite)</code>,
-        <code>.file(url)</code> as JSON with atomic writes, <code>.ubiquitous</code> for iCloud key-value.
-        Keychain is deliberately not a store backend; secrets go through the keychain extension.</li>
+    <li><b>Persistence.</b> <code>.memory</code>, <code>.userDefaults(suite:)</code>,
+        <code>.file(directory:)</code> as one JSON file per scope with atomic writes, and
+        <code>.ubiquitous</code> for iCloud key-value storage, where changes from another device
+        surface as ordinary store changes. Keychain is deliberately not a store backend; secrets
+        belong in an extension the app writes.</li>
     <li><b>Visibility.</b> A scope is page-visible or Swift-only. Swift-only scopes still get observation;
         they just never cross the bridge.</li>
     <li><b>Consistency.</b> Last write wins. Every write is stamped with session id and sequence so a page
@@ -525,23 +528,28 @@ sash.on("alerts:activated", ({ id, action }) => router.go(`/clock/${id}`))</code
   <table>
     <tr><th>Channel</th><th>Mechanism</th><th>Guards</th></tr>
     <tr><td>App bundle</td>
-        <td>Appcast JSON, download, verify, in-place swap, relaunch.</td>
-        <td>SHA-256 must match. Code signature must validate and match the running bundle's team.
-            Swapping ourselves bypasses Gatekeeper, so the updater does Gatekeeper's job.</td></tr>
+        <td>Appcast JSON, download, SHA-256, <code>ditto</code> expansion, stage beside the bundle,
+            rename swap, relaunch through a detached shell that waits for the process to exit.</td>
+        <td>The new bundle must satisfy the running app's own designated requirement, which pins
+            identifier, team and certificate chain with nothing configured. It must be the same bundle
+            identifier and a newer version. Refused from a disk image or a read-only folder.</td></tr>
     <tr><td>Web layer</td>
-        <td>Manifest of files with hashes, signed. Downloaded into an overlay directory; switched in on
-            next load or on request.</td>
-        <td>Ed25519 signature verified with a key embedded in the app. Manifest declares
-            <code>requires.api</code>; the host refuses a manifest outside its range. If no session
-            reaches ready within a timeout after switching, the overlay is marked bad and the previous
-            layer is restored.</td></tr>
+        <td>Manifest of files with hashes, signed with Ed25519 (<code>manifest.json.sig</code>).
+            Files land in <code>Application Support/&lt;identifier&gt;/web/&lt;version&gt;/</code>; the
+            overlay switches; a hidden probe session must reach <code>sash.ready()</code>.</td>
+        <td>Signature verified with the key in the app. <code>requires.api</code> must not exceed the
+            app's contract version. Every file's hash and size must match. If the probe times out, the
+            previous layer comes back and the version is remembered as bad and never offered again.
+            <code>Tools/sash-web-release.swift</code> makes the keys and signs manifests.</td></tr>
   </table>
   <p>Two artifacts, two versions, two CDN paths. A release may move either or both. The overlay keeps
      the previous layer for rollback and prunes older ones.</p>
-  <p>Both channels are configured on the host in Swift: <code>Sash.Host(web:, updates: .init(app:
-     .appcast(url), web: .manifest(url, publicKey: key)))</code>. There is no page namespace. Swift
-     observes <code>host.updater.status</code> and shows it however the app likes; an app that wants
-     the page to show it writes a three-call extension over that object.</p>
+  <p>Both channels are configured on the host in Swift: <code>Sash.Host(web:, updates:
+     UpdateConfiguration(app: .init(appcastURL:), web: .init(manifestURL:, publicKey:)))</code>.
+     There is no page namespace. Swift observes <code>host.updater.status</code>, calls
+     <code>check()</code>, <code>apply()</code> and <code>relaunch()</code>, and shows it however the
+     app likes; an app that wants the page to show it writes a three-call extension over that object.
+     The page hears <code>sash:web-updated</code> when a new layer is in.</p>
 
   <!-- ============================================================ -->
   <h2 id="security">12. Security</h2>
@@ -610,16 +618,17 @@ sash.on("alerts:activated", ({ id, action }) => router.go(`/clock/${id}`))</code
     <tr><td>The class is <code>SashHost</code>, spelled <code>Sash.Host</code>.</td><td>Foundation exports a <code>Host</code> already, and every app imports Foundation.</td></tr>
     <tr><td><code>session.send</code> and <code>host.send</code>, not <code>context.send</code>.</td><td>Context is a value; the session is what can talk to the page.</td></tr>
     <tr><td>Request bodies are buffered; response bodies stream.</td><td>WebKit hands the whole request body over at start. Streaming responses is what SSE needs.</td></tr>
-    <tr><td>Strict rejection of unknown call fields is deferred.</td><td><code>JSONDecoder</code> cannot do it without a tracking decoder. Missing and mistyped fields are still <code>invalid-args</code>.</td></tr>
-    <tr><td>Persistence in milestone 1: memory and UserDefaults.</td><td>File and iCloud backends follow when an app needs them.</td></tr>
+    <tr><td>Call arguments decode strictly, straight from JSON.</td><td>A tracking decoder reports the first field the handler's type never asked for as <code>invalid-args</code>. A misspelled argument is an error, not a silent no-op.</td></tr>
+    <tr><td>A web layer is probed before anyone sees it.</td><td>A hidden session must boot from the new overlay and call ready. Rolling back before a visible window loads beats rolling back after.</td></tr>
+    <tr><td>Code signature checks use the running app's designated requirement.</td><td>Nothing to configure, and a debug build only accepts debug updates, which is right.</td></tr>
     <tr><td>Rule-list regexes avoid alternation.</td><td>WebKit's content-blocker dialect rejected <code>(/|$)</code>; a resolved URL always has a path, so <code>/</code> closes the host.</td></tr>
   </table>
 
   <!-- ============================================================ -->
   <h2 id="open">16. Open questions</h2>
   <ul>
-    <li>Whether route handlers should use a small server type of our own or adopt an existing
-        request-response vocabulary. Leaning own, kept tiny.</li>
+    <li>Whether the app updater should also offer a delta or a DMG path. Zip of the bundle is enough
+        for now.</li>
     <li>Whether the recipes should ship as a third SwiftPM product after all, once a few apps have
         shown which ones stabilise.</li>
     <li>How many overlay versions to keep and whether the page may pin one.</li>

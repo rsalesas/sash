@@ -43,6 +43,14 @@ small `window.sash` object, and can reach nothing Swift did not declare.
   With it, the allow list is the only policy: it drives both the proxied
   `sash.net.fetch` and WebKit's own rule list for the page's `fetch`.
 
+- **Sources.** The page can come from the bundle, a directory, a unix-socket
+  backend, a local HTTP port, a dev server with live reload, or layers of
+  those.
+- **Updates.** An app channel (appcast, verified against the running app's
+  own code-signing requirement, swapped and relaunched) and a web channel
+  (an Ed25519-signed manifest downloaded into an overlay, probed in a hidden
+  session and rolled back if the page never becomes ready).
+
 Standard extensions are deliberately three: state (core), `Net`, `Clipboard`.
 Everything else is a small extension you write; see the recipes in
 [docs/spec.html](docs/spec.html).
@@ -75,6 +83,18 @@ swift test
 
 Unit tests need nothing. The integration tests boot real pages in offscreen
 windows and skip themselves when there is no window server.
+
+## Releasing a web layer
+
+```bash
+swift Tools/sash-web-release.swift keygen
+swift Tools/sash-web-release.swift manifest path/to/web --version 1.2.0 \
+  --base https://cdn.example.com/app/web/1.2.0/ --key <private-key>
+```
+
+Embed the public key in `UpdateConfiguration.WebChannel`, upload the files
+under `--base`, and put `manifest.json` and `manifest.json.sig` where the
+channel's `manifestURL` points.
 
 ## Docs
 

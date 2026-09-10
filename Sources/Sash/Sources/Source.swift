@@ -7,9 +7,18 @@ public protocol Source: Sendable {
 }
 
 /// Where the web layer comes from.
-public enum WebLayer: Sendable {
+public indirect enum WebLayer: Sendable {
     /// A directory on disk, served as-is.
     case directory(URL)
+    /// An HTTP server on a unix socket, for companions to a local daemon.
+    case socket(path: String, hostHeader: String = "localhost")
+    /// A plain-HTTP server on a port, such as a local backend.
+    case remote(URL)
+    /// A dev server such as Vite. Nothing is cached, and the server's host
+    /// is added to the network allow list so live reload can connect.
+    case dev(URL)
+    /// Layers consulted in order; the first to answer wins.
+    case layered([WebLayer])
     /// An explicit chain, consulted in order.
     case sources([any Source])
 
@@ -29,7 +38,30 @@ public enum WebLayer: Sendable {
     public var sources: [any Source] {
         switch self {
         case .directory(let url): return [DirectorySource(root: url)]
+        case .socket(let path, let hostHeader): return [SocketSource(path: path, hostHeader: hostHeader)]
+        case .remote(let url): return [RemoteSource(baseURL: url)]
+        case .dev(let url): return [RemoteSource(baseURL: url, noStore: true)]
+        case .layered(let layers): return layers.flatMap(\.sources)
         case .sources(let s): return s
+        }
+    }
+
+    /// Hosts the page must be allowed to reach for this layer to work: the
+    /// dev server, so its live-reload socket connects.
+    public var requiredNetworkHosts: [String] {
+        switch self {
+        case .dev(let url): return [url.host ?? "localhost"]
+        case .layered(let layers): return layers.flatMap(\.requiredNetworkHosts)
+        default: return []
+        }
+    }
+
+    /// The directory this layer serves from disk, when it is one.
+    var directory: URL? {
+        switch self {
+        case .directory(let url): return url
+        case .layered(let layers): return layers.lazy.compactMap(\.directory).first
+        default: return nil
         }
     }
 }

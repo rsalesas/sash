@@ -32,14 +32,19 @@ public final class SashHost {
 
     public let appVersion: String
     public let webVersion: String
+    /// The update facility, when configured.
+    public private(set) var updater: Updater?
 
     public init(web: WebLayer,
                 identifier: String? = nil,
                 store storeConfiguration: StoreConfiguration = .default,
+                updates: UpdateConfiguration? = nil,
                 @ExtensionBuilder extensions build: () -> [any SashExtension] = { [] }) {
         self.identifier = identifier ?? Bundle.main.bundleIdentifier ?? "sash"
         self.webLayer = web
-        self.sources = web.sources
+        // A web update channel puts a switchable overlay ahead of the bundle.
+        let overlay: OverlaySource? = updates?.web != nil ? OverlaySource() : nil
+        self.sources = (overlay.map { [$0] } ?? []) + web.sources
         self.store = Store(configuration: storeConfiguration)
         self.registry = Registry()
         self.appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
@@ -55,13 +60,15 @@ public final class SashHost {
         store.onChange = { [weak self] change in self?.fanOut(change) }
         observeAppearance()
         recompileNetworkPolicy()
+        if let updates { updater = Updater(configuration: updates, host: self, overlay: overlay) }
     }
 
     // MARK: Network policy
 
     /// The allow list in force: the `Net` extension's, or nothing.
     public var networkAllowList: NetAllowList {
-        (extensions.first { $0 is Net } as? Net)?.allowList ?? NetAllowList([])
+        let net = (extensions.first { $0 is Net } as? Net)?.allowList.patterns ?? []
+        return NetAllowList(net + webLayer.requiredNetworkHosts)
     }
 
     private func recompileNetworkPolicy() {
@@ -234,7 +241,7 @@ public final class SashHost {
     }
 
     private static func readWebVersion(_ web: WebLayer) -> String {
-        guard case .directory(let root) = web,
+        guard let root = web.directory,
               let data = try? Data(contentsOf: root.appendingPathComponent("sash.json")),
               let v = try? JSONValue(parsing: data), let s = v["version"]?.stringValue else { return "0" }
         return s
