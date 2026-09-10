@@ -28,6 +28,7 @@ public final class SashHost {
     @ObservationIgnored private var appearanceObservation: NSKeyValueObservation?
     @ObservationIgnored private var colorObserver: (any NSObjectProtocol)?
     @ObservationIgnored private var localeObserver: (any NSObjectProtocol)?
+    @ObservationIgnored private var launchObserver: (any NSObjectProtocol)?
     @ObservationIgnored private(set) var networkPolicy: NetworkPolicy?
     @ObservationIgnored private var policyTask: Task<Void, Never>?
 
@@ -259,7 +260,25 @@ public final class SashHost {
     }
 
     private func observeAppearance() {
-        guard let app = NSApp else { return }
+        // A Host is usually built in an App's property initialiser, which runs
+        // before NSApplication exists: there is nothing to observe yet, and the
+        // snapshot in `init` had to guess from the global setting. Wait for the
+        // app, then take a real reading and start observing for changes.
+        guard let app = NSApp else {
+            launchObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didFinishLaunchingNotification,
+                object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    self?.observeAppearance()
+                    self?.platformDidChange()
+                }
+            }
+            return
+        }
+        if let launchObserver {
+            NotificationCenter.default.removeObserver(launchObserver)
+            self.launchObserver = nil
+        }
         appearanceObservation = app.observe(\.effectiveAppearance) { [weak self] _, _ in
             Task { @MainActor in self?.platformDidChange() }
         }
