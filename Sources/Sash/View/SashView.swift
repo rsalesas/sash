@@ -6,10 +6,16 @@ import SwiftUI
 public struct SashView: NSViewRepresentable {
     let host: SashHost
     let route: Route
+    let onSession: ((Session) -> Void)?
 
-    public init(_ host: SashHost, route: Route = "/") {
+    /// `onSession` hands back the session this view created, once. Keep it in
+    /// `@State` and bind the window's title, subtitle and toolbar to *it*
+    /// rather than to `host.focused`, which is app-wide: in a multi-window app
+    /// every window would otherwise show the key window's context.
+    public init(_ host: SashHost, route: Route = "/", onSession: ((Session) -> Void)? = nil) {
         self.host = host
         self.route = route
+        self.onSession = onSession
     }
 
     public func makeCoordinator() -> Coordinator { Coordinator() }
@@ -18,6 +24,9 @@ public struct SashView: NSViewRepresentable {
         let session = host.makeSession(route: route)
         context.coordinator.session = session
         let container = SessionContainerView(session: session)
+        // Next turn of the loop: handing it back now would be writing to state
+        // in the middle of a view update.
+        if let onSession { DispatchQueue.main.async { onSession(session) } }
         return container
     }
 
@@ -89,6 +98,10 @@ public final class SessionContainerView: NSView {
     }
 
     private func resignedKey() {
+        // Switching to another app resigns key too, but that is not a change
+        // of focus *within* this app: clearing here blanks the title, subtitle
+        // and every toolbar button until you come back.
+        guard NSApp?.isActive == true else { return }
         if session.host.focused === session { session.host.setFocused(nil) }
     }
 
