@@ -99,4 +99,5 @@ channel's `manifestURL` points.
 ## Docs
 
 - [docs/spec.html](docs/spec.html): the contract, decisions and recipes.
+- [docs/spec-android.html](docs/spec-android.html): the same contract, on Android.
 - [docs/brainstorming.html](docs/brainstorming.html): where it came from.

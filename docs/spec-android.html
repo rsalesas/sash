@@ -1,0 +1,1075 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sash for Android — specification</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1d1d1b; --muted: #6b6a66; --line: #e4e1da;
+    --accent: #7a4b1e; --card: #ffffff; --code: #f1efe9; --ok: #2f6b3a; --warn: #8a5a00; --diff: #7a2e2e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16161a; --fg: #ebe9e4; --muted: #9c9a94; --line: #2b2b31;
+            --accent: #d9a468; --card: #1e1e24; --code: #24242b; --ok: #7fc48d; --warn: #e0b45c; --diff: #e08a8a; }
+  }
+  html { color-scheme: light dark; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 16px/1.55 -apple-system, "SF Pro Text", Roboto, system-ui, sans-serif; }
+  main { max-width: 50rem; margin: 0 auto; padding: 3rem 1.25rem 6rem; }
+  h1 { font-size: 2rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 2rem; }
+  h2 { font-size: 1.3rem; margin: 3rem 0 .75rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
+  h2 small { color: var(--muted); font-weight: 400; font-size: .8rem; margin-left: .5rem; }
+  h3 { font-size: 1.05rem; margin: 1.75rem 0 .4rem; }
+  p, li { max-width: 46rem; }
+  ul, ol { padding-left: 1.2rem; }
+  li { margin: .35rem 0; }
+  b { font-weight: 600; }
+  code { font: .88em/1 "SF Mono", ui-monospace, Menlo, "Roboto Mono", monospace; background: var(--code);
+         padding: .1em .35em; border-radius: 4px; }
+  pre { background: var(--code); padding: 1rem; border-radius: 8px; overflow-x: auto;
+        font: .84rem/1.5 "SF Mono", ui-monospace, Menlo, "Roboto Mono", monospace; }
+  pre code { background: none; padding: 0; }
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .93rem; margin: 1rem 0; }
+  th, td { text-align: left; vertical-align: top; padding: .5rem .6rem; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+  td code { white-space: nowrap; }
+  .callout { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+             padding: .9rem 1.1rem; border-radius: 6px; margin: 1.25rem 0; }
+  .callout p { margin: 0; }
+  .decision { border-left-color: var(--ok); }
+  .decision b:first-child { color: var(--ok); }
+  .risk { border-left-color: var(--warn); }
+  .risk b:first-child { color: var(--warn); }
+  nav.toc { columns: 2; column-gap: 2rem; font-size: .93rem; margin-bottom: 1rem; }
+  nav.toc a { color: var(--fg); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent); }
+  nav.toc ol { margin: 0; }
+  .scope { font-size: .8rem; color: var(--muted); }
+  a { color: var(--accent); }
+  .status { display: inline-block; font-size: .72rem; padding: .1em .5em; border-radius: 999px;
+            border: 1px solid var(--line); color: var(--muted); vertical-align: middle; margin-left: .4rem;
+            font-weight: 400; letter-spacing: 0; }
+  .status.same { color: var(--ok); border-color: var(--ok); }
+  .status.caveat { color: var(--warn); border-color: var(--warn); }
+  .status.differs { color: var(--diff); border-color: var(--diff); }
+  .v { color: var(--ok); }
+  .m { color: var(--warn); }
+  .u { color: var(--diff); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sash for Android</h1>
+  <p class="sub">Specification, draft 1. The same contract as <a href="spec.html">Sash for macOS</a>, hosted by a
+     Kotlin library in a Jetpack Compose app: your Compose, your activities, your top bar; the web app in a
+     view; extensions as the only door between them. One web folder ships in both apps unchanged. Where this
+     document repeats the macOS one it says so; where Android differs it says why.</p>
+
+  <nav class="toc"><ol>
+    <li><a href="#map">Reader's map</a></li>
+    <li><a href="#scope">Purpose and scope</a></li>
+    <li><a href="#concepts">Concepts</a></li>
+    <li><a href="#contract">The web contract</a></li>
+    <li><a href="#sessions">Sessions and many web views</a></li>
+    <li><a href="#core">The core surface</a></li>
+    <li><a href="#standard">Standard extensions</a></li>
+    <li><a href="#protocol">The extension protocol</a></li>
+    <li><a href="#recipes">Writing your own</a></li>
+    <li><a href="#sources">Sources</a></li>
+    <li><a href="#state">State and storage</a></li>
+    <li><a href="#updates">Updates</a></li>
+    <li><a href="#security">Security</a></li>
+    <li><a href="#testing">Testing</a></li>
+    <li><a href="#package">Package layout and platform</a></li>
+    <li><a href="#decisions">Decisions log</a></li>
+    <li><a href="#open">Open questions</a></li>
+    <li><a href="#portable">One page, two platforms</a></li>
+    <li><a href="#divergence">Appendix: divergence table</a></li>
+  </ol></nav>
+
+  <p>Every section carries a pill. <span class="status same">shared</span> means the text is the macOS contract
+     restated and the page cannot tell the platforms apart. <span class="status caveat">same with caveat</span>
+     means the page sees the same thing but the plumbing or an edge differs. <span class="status differs">differs</span>
+     means the native side is a different design.</p>
+
+  <!-- ============================================================ -->
+  <h2 id="map">0. Reader's map</h2>
+  <p>What the page sees is identical. What the native side does to make that true is different in five
+     places, and each is a consequence of one fact about Android's <code>WebView</code>. The full table with
+     verification status is in the <a href="#divergence">appendix</a>.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Fact about WebView</th><th>Consequence</th><th>Section</th></tr>
+    <tr><td>Custom schemes are opaque origins: no <code>fetch</code>, no <code>EventSource</code>, no stable
+            <code>location.host</code>.</td>
+        <td>The page is served at <code>https://app.sash.invalid/</code> from
+            <code>shouldInterceptRequest</code>. Nothing else changes.</td>
+        <td><a href="#contract">3.1</a></td></tr>
+    <tr><td>Interception never sees a request body.</td>
+        <td>The runtime tunnels same-origin <code>fetch</code> requests that carry a body through the call
+            bridge and streams the reply back over interception. Page code is unchanged.</td>
+        <td><a href="#tunnel">3.7</a></td></tr>
+    <tr><td>Interception never sees WebSockets, service workers, or redirect hops, and there are no content
+            rule lists.</td>
+        <td>Network policy is a 403 from interception plus a <code>Content-Security-Policy</code> header on
+            every HTML document. macOS sets no CSP; this one is permissive except for network.</td>
+        <td><a href="#security">12</a></td></tr>
+    <tr><td>An Activity is recreated on rotation.</td>
+        <td>The host owns sessions, not the view. <code>SashView</code> re-attaches an existing session's
+            <code>WebView</code>; a session ends only when its view leaves for good.</td>
+        <td><a href="#sessions">4.2</a></td></tr>
+    <tr><td>There is no APK swap an app may do to itself.</td>
+        <td>The web channel is identical and consumes the same signed manifests. The app channel does not
+            exist; the store is the app updater.</td>
+        <td><a href="#updates">11</a></td></tr>
+  </table></div>
+
+  <!-- ============================================================ -->
+  <h2 id="scope">1. Purpose and scope <span class="status same">shared</span></h2>
+  <p>Sash makes a web app a good citizen of Android without pretending to be a cross-platform framework.
+     The developer writes a normal Compose app and a normal single-page web app, the same one that ships in
+     the macOS app. Sash supplies the view that hosts the page, the interceptor that serves it, the store
+     that both sides share, and the registry through which Kotlin grants the page capabilities one at a
+     time.</p>
+  <ul>
+    <li><b>In scope.</b> Everything the macOS package does that has an Android meaning: hosting, serving,
+        streaming, state, the call bridge, context reporting, many simultaneous web views, the three
+        standard extensions, the web update channel, a test harness. Two things macOS never had to think
+        about: sessions that survive configuration changes, and the system back gesture.</li>
+    <li><b>Out of scope.</b> A JavaScript UI framework. An APK updater. Views-based chrome beyond the one
+        <code>SashWebView</code> class. Anything that makes the page reach the operating system without a
+        Kotlin declaration.</li>
+  </ul>
+  <div class="callout"><p><b>Design rule.</b> The page talks HTTP and a small JavaScript object. Kotlin
+     decides who answers. Nothing the page can reach exists unless Kotlin declared it.</p></div>
+
+  <!-- ============================================================ -->
+  <h2 id="concepts">2. Concepts <span class="status caveat">same with caveat</span></h2>
+  <div class="tablewrap"><table>
+    <tr><th>Term</th><th>What it is</th><th>Cardinality</th></tr>
+    <tr><td><b>Host</b></td>
+        <td><code>SashHost</code>, owning the registry, the store, the sources, and the list of live
+            sessions. Created once, in <code>Application.onCreate</code> or a lazy singleton, never in an
+            Activity: activities die on rotation and the host must not.</td>
+        <td>One per app, more if you want isolated worlds.</td></tr>
+    <tr><td><b>Session</b></td>
+        <td>One <code>WebView</code> plus its context, its events stream, and its per-session extensions.
+            Has an id, an entry route, and a key that lets a recreated Activity find it again.</td>
+        <td>As many as you like. One per <code>SashView</code> key.</td></tr>
+    <tr><td><b>SashView</b></td>
+        <td>The composable. Wraps <code>AndroidView</code>, finds or makes the session for its key, attaches
+            the web view on enter, detaches or ends it on leave. Takes a host, an optional route, an
+            optional key. <code>SashWebView</code>, the <code>View</code> underneath, is public for apps
+            that are not Compose.</td>
+        <td>Anywhere a composable goes.</td></tr>
+    <tr><td><b>Source</b></td>
+        <td>Answers requests for the web layer's files: assets, directory, overlay, socket, remote, dev.</td>
+        <td>One chain per host.</td></tr>
+    <tr><td><b>Extension</b></td>
+        <td>A Kotlin type that declares calls, routes, streams, and scripts under a namespace, and hooks
+            session lifecycle.</td>
+        <td>Installed per host; instantiated per host or per session by its scope.</td></tr>
+    <tr><td><b>Store</b></td>
+        <td>The shared key-value state, JSON values, scoped by name, with pluggable persistence. Backs
+            <code>sash.state</code>, the <code>localStorage</code> shim, and the settings screen.</td>
+        <td>One per host.</td></tr>
+    <tr><td><b>Context</b></td>
+        <td>What a session's page is showing: title, subtitle, view id, selection, dirty, commands it can
+            handle. A Compose <code>State</code>.</td>
+        <td>One per session.</td></tr>
+  </table></div>
+
+  <p>World Clock on Android, for scale. The web folder is <code>Examples/WorldClock/web</code>, the same
+     files the macOS app bundles.</p>
+  <pre><code>class WorldClockApp : Application() {
+    lateinit var host: SashHost
+    override fun onCreate() {
+        super.onCreate()
+        host = SashHost(this, web = WebLayer.assets("web")) {
+            Clipboard()
+        }
+    }
+}
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val host = (application as WorldClockApp).host
+        setContent {
+            val settings = host.store.scope("settings")
+            val appearance by settings.state("appearance", "auto")
+            WorldClockTheme(darkTheme = when (appearance) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }) {
+                val nav = rememberNavController()
+                NavHost(nav, startDestination = "clock") {
+                    composable("clock") {
+                        val context = host.focused?.context
+                        Scaffold(topBar = {
+                            TopAppBar(
+                                title = { Text(context?.title ?: "World Clock") },
+                                actions = { ClockActions(host, onSettings = { nav.navigate("settings") }) })
+                        }) { padding -> SashView(host, modifier = Modifier.padding(padding)) }
+                    }
+                    composable("settings") { ClockSettings(settings) }
+                }
+            }
+        }
+    }
+}</code></pre>
+  <p>The Settings window becomes a destination; the toolbar becomes <code>TopAppBar</code> actions; the
+     <code>CommandMenu</code> becomes the overflow menu plus hardware-keyboard shortcuts. The page does not
+     know any of this happened.</p>
+
+  <!-- ============================================================ -->
+  <h2 id="contract">3. The web contract <span class="status same">shared</span></h2>
+  <p>Everything the page can do is one of four things: fetch a URL, open an events stream, call a
+     declared function, or read and write shared state. The global is <code>window.sash</code>. Sections
+     3.2 through 3.6 are the macOS text; only 3.1 and 3.7 carry Android facts.</p>
+
+  <h3>3.1 Origin and paths <span class="status caveat">same with caveat</span></h3>
+  <ul>
+    <li>The page is served at <code>https://app.sash.invalid/</code>. Every request to that origin is
+        answered in-process by <code>WebViewClient.shouldInterceptRequest</code>; none reaches the
+        network. The host is under <code>.invalid</code>, reserved by RFC 2606, so a request that ever
+        escaped interception would get NXDOMAIN rather than a real server. A single-label host such as
+        <code>https://app/</code> was rejected because DNS search suffixes on managed networks can resolve
+        it.</li>
+    <li>Why not <code>sash://app/</code>: Chromium treats a custom scheme as an opaque origin. Relative
+        URLs do not resolve, <code>fetch</code> and <code>EventSource</code> fail, and
+        <code>location.host</code> is empty. An https origin gives the page a secure context, working
+        relative URLs, and storage keyed to a stable origin.</li>
+    <li><code>location.pathname</code> is the entry route on both platforms. <code>location.protocol</code>
+        and <code>location.host</code> are not the same on both (<code>sash:</code>/<code>app</code> on
+        macOS). The contract promised only that the host is stable. A page that needs its own origin as a
+        string reads <code>sash.origin</code> (section 17) and never hardcodes either.</li>
+    <li><code>/_sash/*</code> is reserved for the framework. Everything else belongs to the developer's
+        sources and routes. Route handlers registered from Kotlin take precedence over the source chain.</li>
+  </ul>
+  <div class="tablewrap"><table>
+    <tr><th>Path</th><th>Purpose</th></tr>
+    <tr><td><code>/_sash/events</code></td><td>The per-session Server-Sent Events stream. Named events; JSON data.</td></tr>
+    <tr><td><code>/_sash/state</code></td><td>Bulk read of the store scopes the page may see.</td></tr>
+    <tr><td><code>/_sash/capabilities</code></td><td>The installed namespaces and their calls, as JSON.</td></tr>
+    <tr><td><code>/_sash/sash.js</code></td><td>The runtime the page may import explicitly. It is also injected at document start, so importing is optional.</td></tr>
+    <tr><td><code>/_sash/r/&lt;ticket&gt;</code></td><td>Android only, internal to the runtime: the reply to a tunnelled request (3.7). Never addressed by page code.</td></tr>
+  </table></div>
+
+  <h3>3.2 Calls</h3>
+  <p>A message is <code>{ id, ns, name, args }</code>; the reply is <code>{ ok, value }</code> or
+     <code>{ ok: false, error: { code, message, data } }</code>. The generated table turns that into
+     <code>await sash.haptics.perform({ pattern: "levelChange" })</code>. Arguments and results are JSON;
+     Kotlin handlers see <code>@Serializable</code> types.</p>
+  <p>Error codes are fixed: <code>capability-missing</code>, <code>invalid-args</code>,
+     <code>denied</code>, <code>unavailable</code>, <code>failed</code>. A call into an uninstalled
+     namespace rejects with <code>capability-missing</code>; it is never <code>undefined</code>.</p>
+  <p>On Android the reply also carries the <code>id</code>, because the transport is a per-frame channel
+     rather than a per-message promise (4.8). The runtime correlates; the page never sees the
+     difference.</p>
+
+  <h3>3.3 Events</h3>
+  <p>The page opens <code>new EventSource("/_sash/events")</code>, or uses <code>sash.on(name, fn)</code>
+     which does the same. Kotlin pushes with <code>session.emit(name, payload)</code> for one session or
+     <code>host.broadcast(name, payload)</code> for all. Framework events are prefixed <code>sash:</code>;
+     developers own the rest of the namespace.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Event</th><th>When</th></tr>
+    <tr><td><code>sash:hello</code></td><td>The stream connected. Carries <code>storeSeq</code>, so a page that missed changes resyncs.</td></tr>
+    <tr><td><code>sash:state</code></td><td>A store key changed, from Kotlin or from another session. Carries scope, key, value, origin.</td></tr>
+    <tr><td><code>sash:appearance</code></td><td>Dark mode, accent colour, locale, hour cycle, reduced motion or contrast changed. Carries the whole platform object.</td></tr>
+    <tr><td><code>sash:focus</code></td><td>This session's window gained or lost focus.</td></tr>
+    <tr><td><code>sash:command</code></td><td>A top-bar, menu or keyboard command the page declared it handles.</td></tr>
+    <tr><td><code>sash:capabilities</code></td><td>An extension was installed after load.</td></tr>
+    <tr><td><code>sash:message</code></td><td>Another session sent this one a message.</td></tr>
+    <tr><td><code>sash:web-updated</code></td><td>A new web layer was installed and probed. Not pre-attached; subscribe with <code>sash.on</code>.</td></tr>
+    <tr><td><code>sash:terminate</code></td><td>Reserved. Emitted by neither platform today.</td></tr>
+  </table></div>
+
+  <h3>3.4 State</h3>
+  <p><code>sash.state.get(scope, key)</code>, <code>set</code>, <code>remove</code>, <code>keys</code>,
+     <code>all</code>, <code>watch</code>, <code>flush</code>. Synchronous reads against a local mirror
+     hydrated at document start; writes are applied locally and forwarded in one microtask batch, so the
+     page never waits. <code>localStorage</code> is shimmed onto the <code>local</code> scope. Settings
+     live in the <code>settings</code> scope. Which scopes a page may see is declared on the host.</p>
+
+  <h3>3.5 Context</h3>
+  <p><code>sash.context.set({ title, subtitle, view, selection, dirty, commands })</code>. Partial updates
+     merge. Kotlin reads <code>session.context</code> as Compose state. The <code>commands</code> array
+     names the <code>sash:command</code> identifiers this view will handle, which is what enables the
+     matching top-bar actions and menu items.</p>
+
+  <h3>3.6 Session identity</h3>
+  <p><code>sash.session</code> exposes <code>{ id, route, isFocused }</code>. The entry route is also the
+     page's <code>location.pathname</code>, so an SPA router needs nothing special.</p>
+
+  <h3 id="tunnel">3.7 Requests with bodies <span class="status caveat">same with caveat</span></h3>
+  <p><code>shouldInterceptRequest</code> is called for a <code>POST</code>, but <code>WebResourceRequest</code>
+     has no body accessor. The runtime closes the gap so that <code>fetch("/api/x", { method: "POST",
+     body })</code> against a Kotlin route works exactly as it does on macOS:</p>
+  <ol>
+    <li>At boot the runtime learns from the snapshot that bodies are tunnelled. It wraps
+        <code>window.fetch</code>. Same-origin requests without a body pass straight through to
+        interception. Same-origin requests with a body are serialised (text as text, binary as an
+        <code>ArrayBuffer</code> message where the WebView supports it, otherwise base64,
+        <code>FormData</code> as hand-built multipart) and posted over the call bridge.</li>
+    <li>Kotlin dispatches the request through the same router and source chain as any other, parks the
+        <code>Response</code> under a one-shot ticket with a 30-second life, and replies with the
+        ticket.</li>
+    <li>The runtime returns <code>fetch("/_sash/r/&lt;ticket&gt;")</code>, which interception answers by
+        replaying the parked status, headers and body, streamed, with <code>Cache-Control:
+        no-store</code>. The page receives a genuine <code>Response</code> with a readable body stream, so
+        SSE over <code>POST</code> and <code>/_sash/net/fetch</code> both work.</li>
+  </ol>
+  <p>Cross-origin requests are not wrapped; the network policy decides those. Not covered, and said so:
+     <code>navigator.sendBeacon</code>, <code>&lt;form method="post"&gt;</code> as a main-frame navigation,
+     and <code>XMLHttpRequest</code> with a body. A page that uses those against a Kotlin route is not
+     portable, and the checklist in section 17 says so. Bodies of a <code>ReadableStream</code> reject
+     with <code>invalid-args</code>.</p>
+  <div class="callout decision"><p><b>Decided.</b> Tunnel through the bridge rather than run a loopback
+     HTTP server. A server on <code>127.0.0.1</code> is a second origin, so every request is cross-origin
+     to the page; its port is not stable so it cannot be <em>the</em> origin; and any app on the device can
+     connect to it, so every request would need a token. Restricting routes to <code>GET</code> was
+     rejected because it breaks the published contract.</p></div>
+
+  <!-- ============================================================ -->
+  <h2 id="sessions">4. Sessions and many web views <span class="status caveat">same with caveat</span></h2>
+  <p>A host may have any number of live sessions. Two activities showing the same page, a main screen and a
+     detail screen, a bottom sheet with a form, a hidden worker session running background JavaScript:
+     all sessions, all equal.</p>
+
+  <h3>4.1 What is shared and what is not</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Shared across sessions</th><th>Per session</th></tr>
+    <tr><td>
+      <ul>
+        <li>The store, so <code>localStorage</code> in one screen is visible in another after
+            <code>sash:state</code></li>
+        <li>The source chain and route table</li>
+        <li>Host-scoped extensions</li>
+        <li>The interceptor, the network policy and its CSP</li>
+        <li>WebView storage (cookies, IndexedDB, Cache API), which Android keys per app data directory</li>
+        <li>One <code>ServiceWorkerClient</code> that refuses everything</li>
+      </ul></td>
+      <td>
+      <ul>
+        <li>The <code>WebView</code>, and the <code>__sashBridge</code> listener on it</li>
+        <li>Context and the top-bar actions derived from it</li>
+        <li>The events stream</li>
+        <li>Session-scoped extensions</li>
+        <li>The entry route, any query, and the key</li>
+      </ul></td></tr>
+  </table></div>
+
+  <h3>4.2 Lifecycle, and surviving rotation <span class="status differs">differs</span></h3>
+  <p>On macOS a <code>SashView</code> owns its session: appear creates, disappear ends. On Android the
+     Activity that hosts a composable is destroyed and recreated on rotation, on a locale change, on a
+     dark-mode switch. If the session died with it, every one of those would reload the page and lose its
+     state. So the host owns sessions, and the view borrows them.</p>
+  <ol>
+    <li><b>Created.</b> <code>SashView(host, route, key)</code> enters composition and finds no session
+        for <code>key</code>, or <code>host.makeSession(route:, key:)</code> is called directly. The
+        <code>WebView</code> is built on a <code>MutableContextWrapper</code> around the application
+        context. Session-scoped extensions are instantiated.</li>
+    <li><b>Attached.</b> The view swaps the wrapper's base context to the Activity, so dialogs, autofill and
+        theme resolve against a real window, and adds the <code>WebView</code> to its
+        <code>AndroidView</code>. A session may be attached to one view at a time.</li>
+    <li><b>Loaded.</b> The document finished loading. The runtime has hydrated.</li>
+    <li><b>Ready.</b> The page called <code>sash.ready()</code>. Only now does the top bar trust context
+        and only now is an overlay update considered good.</li>
+    <li><b>Detached.</b> The composable left because the Activity is changing configuration
+        (<code>activity.isChangingConfigurations</code>). The <code>WebView</code> is removed from its
+        parent and its base context reset to the application. The page keeps running. The recreated
+        Activity's <code>SashView</code>, with the same key from <code>rememberSaveable</code>, attaches it
+        again.</li>
+    <li><b>Ended.</b> The composable left for any other reason, or <code>session.end()</code> was called.
+        Extensions get a chance to flush. The <code>WebView</code> is destroyed.</li>
+  </ol>
+  <p>Extensions receive each transition through <code>session(session, state)</code>, with the same four
+     states as macOS; attached and detached are not states the page or extensions observe. Process death
+     ends everything: the key survives in saved instance state, the store is on disk, and a fresh session
+     loads the same route with the same state. There is no <code>WebView.saveState</code>; the page is the
+     source of truth for its own view state and the store for everything else.</p>
+  <p>If the render process dies (<code>onRenderProcessGone</code>), the session replaces its
+     <code>WebView</code> under the same id and reloads. <code>SashView</code> recomposes around the new
+     instance. This is the macOS "web content process terminated; reloading" case.</p>
+
+  <h3>4.3 Focus and command routing</h3>
+  <p><code>host.focused</code> is the session whose <code>WebView</code> last reported
+     <code>onWindowFocusChanged(true)</code>. Commands from <code>host.send</code> are routed to it, and
+     their enablement is read from that session's context. In multi-window mode two activities can be
+     visible; only one has window focus, which is the right one to receive a keyboard shortcut.</p>
+
+  <h3>4.4 Talking between sessions</h3>
+  <p><code>sash.sessions.list()</code>, <code>sash.sessions.send(id, name, payload)</code> and
+     <code>sash.sessions.broadcast(name, payload)</code>, delivering <code>sash:message</code>. Shared state
+     is usually the better tool.</p>
+
+  <h3>4.5 Opening more</h3>
+  <p>The page cannot open a screen by itself. If an app wants the page to ask, the developer writes a call
+     such as <code>sash.clocks.detach(city)</code> whose handler starts an Activity, or navigates a
+     <code>NavHost</code>, carrying a <code>Route</code>. <code>Route</code> is <code>Parcelable</code> so it
+     rides in an <code>Intent</code> extra or a saved-state handle. The destination renders
+     <code>SashView(host, route)</code>, which is a new session. Bottom sheets and dialogs are the same
+     pattern.</p>
+
+  <h3>4.6 Headless sessions</h3>
+  <p><code>host.makeSession(route, hidden = true)</code> creates a session whose <code>WebView</code> is
+     never attached to a window. Unlike WebKit, Chromium loads and runs scripts in an unattached
+     <code>WebView</code>: its web contents are merely hidden. <code>document.visibilityState</code> is
+     <code>"hidden"</code>, timers are aligned to one second, and <code>requestAnimationFrame</code> does not
+     fire. Used by the update probe and by apps that want a JavaScript worker without UI. Because of it,
+     <code>sash.ready()</code> must be called from the load path and never from an animation frame; the
+     checklist in section 17 makes this a rule on both platforms.</p>
+
+  <h3>4.7 No browser showing through</h3>
+  <p>The view is an app's interface, not a document the user browses. Android's <code>WebView</code> starts
+     closer to that than WebKit does: it has no context menu on links, no reload the user can reach, no
+     back button of its own. What remains is taken out or pinned down:</p>
+  <ul>
+    <li><b>Zoom.</b> <code>setSupportZoom(false)</code>, <code>setBuiltInZoomControls(false)</code>,
+        <code>setDisplayZoomControls(false)</code>. Pinch does nothing.</li>
+    <li><b>Text size.</b> Left at the default, which follows the system font scale. macOS has no
+        equivalent setting; this is an accessibility control and Sash does not override it. A page that
+        must not reflow can set <code>textZoom</code> through the escape hatch, and is told not to.</li>
+    <li><b>Dark mode.</b> <code>WebSettingsCompat.setAlgorithmicDarkeningAllowed(false)</code>. The page
+        owns its appearance through <code>data-sash-appearance</code>; Chromium must not repaint it. The
+        app should use a DayNight theme so <code>prefers-color-scheme</code> agrees with
+        <code>sash.platform.appearance</code>.</li>
+    <li><b>Selection.</b> The floating action mode on selected text is trimmed to Copy, Select all and
+        Paste; Share and Web search are a browser's. The page still receives <code>contextmenu</code> on
+        long-press and may draw its own menu.</li>
+    <li><b>Overscroll.</b> <code>OVER_SCROLL_NEVER</code> by default, exposed as a parameter. The glow
+        says "document".</li>
+    <li><b>Reload.</b> Nothing to remove. <code>Session.reload()</code> and the updater still reload;
+        reloading is the app's decision.</li>
+    <li><b>Inspector.</b> Debuggable builds are inspectable from <code>chrome://inspect</code>
+        automatically; release builds are not.</li>
+    <li><b>Back.</b> Off by default. <code>SashView(handleSystemBack = true)</code> installs a
+        <code>BackHandler</code> that calls <code>goBack()</code> while the page has history. Most Sash
+        pages are single documents with a client-side router, and whether back means "close the sheet",
+        "previous route" or "leave the app" is the app's to decide, so it is a parameter and not a
+        default.</li>
+    <li><b>Files.</b> <code>allowFileAccess</code> and <code>allowContentAccess</code> are off. Mixed
+        content is never allowed.</li>
+  </ul>
+
+  <h3 id="bridge">4.8 The plumbing under a session <span class="status differs">differs</span></h3>
+  <p>The page's contract is the same. What carries it:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Piece</th><th>Android</th><th>Notes</th></tr>
+    <tr><td>Calls</td>
+        <td><code>WebViewCompat.addWebMessageListener(webView, "__sashBridge",
+            setOf("https://app.sash.invalid"), listener)</code></td>
+        <td>The injected object is named <code>__sashBridge</code>, never <code>sash</code>: the listener
+            defines a global of that name, and <code>sash</code> is ours. Replies go back through the
+            <code>JavaScriptReplyProxy</code>, which is a per-frame channel, so the runtime matches them by
+            <code>id</code>. Both sides run on the main thread.</td></tr>
+    <tr><td>Boot snapshot</td>
+        <td><code>WebViewCompat.addDocumentStartJavaScript</code> once, containing a guard, a synchronous
+            read of <code>__sashBoot.snapshot()</code>, the runtime, and extension scripts.</td>
+        <td><code>__sashBoot</code> is a one-method <code>addJavascriptInterface</code> object. macOS
+            re-installs the user script before every main-frame navigation to refresh the snapshot;
+            Android reads it fresh each time the script runs, which also covers <code>reload()</code>. The
+            read happens on the WebView's JavaBridge thread, so the snapshot comes from a lock-protected
+            mirror and never touches the main thread. Start scripts run in every frame that matches the
+            origin rule, so the script begins with <code>if (window !== window.top) return;</code> for
+            parity with <code>forMainFrameOnly</code>.</td></tr>
+    <tr><td>Document-end scripts</td>
+        <td>Wrapped in <code>DOMContentLoaded</code> inside the start script.</td>
+        <td>There is no document-end injection API.</td></tr>
+    <tr><td>Serving</td>
+        <td><code>shouldInterceptRequest</code> returning a <code>WebResourceResponse</code></td>
+        <td>Called on a pool of background threads that may block, concurrently. The response head is
+            produced by hopping to the main thread and waiting, with a time box that turns a stuck handler
+            into a 504 instead of a pinned thread. Bodies are an <code>InputStream</code> fed from a
+            coroutine.</td></tr>
+    <tr><td>Streaming</td>
+        <td>A queue-backed <code>InputStream</code>; <code>null</code> is end of stream.</td>
+        <td>Chromium reads the stream on a background thread in small chunks and forwards each read
+            before end of stream, so SSE works. Two facts shape it: Chromium withholds the response head
+            until the first read completes, which is why the stream begins with a <code>: ok</code>
+            comment on both platforms; and Chromium may not close the stream when the page stops
+            listening, so every emitter sends a heartbeat comment every 15 seconds and a parked read
+            wakes, fails, and releases its thread. <code>PipedInputStream</code> is not used because its
+            liveness check is tied to a writer thread, which coroutines do not keep.</td></tr>
+    <tr><td>Navigation</td>
+        <td><code>shouldOverrideUrlLoading</code></td>
+        <td>Allows the Sash origin. <code>http</code>, <code>https</code> and <code>mailto</code> go to
+            <code>Intent.ACTION_VIEW</code>; anything else is refused and logged. Main-frame requests that
+            bypass this callback still meet the interceptor's policy.</td></tr>
+    <tr><td><code>target="_blank"</code></td>
+        <td><code>setSupportMultipleWindows(true)</code> and <code>onCreateWindow</code></td>
+        <td>Returns a throwaway <code>WebView</code> whose client opens the URL externally and destroys
+            itself. With multiple windows off, Chromium would navigate the page instead, which is the
+            naive-wrapper bug.</td></tr>
+    <tr><td>Evaluate</td>
+        <td><code>evaluateJavascript("(async () => { … })()")</code>, result parsed as JSON.</td>
+        <td><code>session.evaluate(body)</code> keeps function-body semantics: <code>return</code> and
+            <code>await</code> allowed.</td></tr>
+  </table></div>
+
+  <!-- ============================================================ -->
+  <h2 id="core">5. The core surface <span class="status caveat">same with caveat</span></h2>
+  <div class="tablewrap"><table>
+    <tr><th>Member</th><th>Purpose</th></tr>
+    <tr><td><code>sash.ready()</code></td><td>Marks the session ready. Idempotent. Call it from the load path (4.6).</td></tr>
+    <tr><td><code>sash.version</code></td><td><code>{ app, web, sash, api }</code>. <code>app</code> is <code>versionName</code>.</td></tr>
+    <tr><td><code>sash.capabilities</code>, <code>sash.has(ns)</code></td><td>What is installed. Updated live.</td></tr>
+    <tr><td><code>sash.platform</code></td><td>OS version, appearance, accent colour, BCP 47 locale, hour cycle (<code>h12</code>/<code>h23</code> from the system's 24-hour setting), reduced motion, high contrast, and <code>family</code> (section 17). Appearance and accent are also CSS custom properties on <code>:root</code>. Changes arrive as <code>sash:appearance</code> with the whole object.</td></tr>
+    <tr><td><code>sash.state</code></td><td>The store, plus the <code>localStorage</code> shim.</td></tr>
+    <tr><td><code>sash.on</code>, <code>sash.off</code></td><td>Events.</td></tr>
+    <tr><td><code>sash.context</code></td><td>Reporting what the page shows.</td></tr>
+    <tr><td><code>sash.session</code>, <code>sash.sessions</code></td><td>Identity, listing, messaging.</td></tr>
+    <tr><td><code>sash.open(url)</code></td><td>Opens an external URL with <code>ACTION_VIEW</code>. <code>http</code>, <code>https</code>, <code>mailto</code>; anything else is refused. The only way out.</td></tr>
+    <tr><td><code>sash.log(level, ...)</code></td><td>Forwarded to <code>android.util.Log</code> under the tag <code>Sash</code>, prefixed with the session id.</td></tr>
+    <tr><td>JavaScript dialogs</td><td><code>alert</code>, <code>confirm</code>, <code>prompt</code> arrive through <code>WebChromeClient</code> and render as a Material <code>AlertDialog</code> on the attached Activity. A detached or hidden session cancels them and logs.</td></tr>
+    <tr><td>Bundle assets</td><td>Plain <code>fetch</code> and <code>&lt;img&gt;</code> against the source chain.</td></tr>
+  </table></div>
+  <p>How the platform object is read, and what tells the host it changed:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Field</th><th>Source</th><th>Change signal</th></tr>
+    <tr><td><code>os</code></td><td><code>Build.VERSION.RELEASE</code></td><td>none</td></tr>
+    <tr><td><code>family</code></td><td><code>"android"</code></td><td>none</td></tr>
+    <tr><td><code>appearance</code></td><td><code>Configuration.uiMode</code> night mask</td><td><code>onConfigurationChanged</code> on the Application</td></tr>
+    <tr><td><code>accent</code></td><td><code>android.R.color.system_accent1_500</code>, as <code>#rrggbb</code></td><td><code>onConfigurationChanged</code>; wallpaper-driven recolours arrive as one</td></tr>
+    <tr><td><code>locale</code></td><td><code>Configuration.locales[0].toLanguageTag()</code></td><td><code>onConfigurationChanged</code>, which also covers per-app language</td></tr>
+    <tr><td><code>hourCycle</code></td><td><code>DateFormat.is24HourFormat(context)</code></td><td><code>ContentObserver</code> on <code>Settings.System.TIME_12_24</code></td></tr>
+    <tr><td><code>reducedMotion</code></td><td><code>!ValueAnimator.areAnimatorsEnabled()</code></td><td>Observer on <code>Settings.Global.ANIMATOR_DURATION_SCALE</code> and <code>ACTION_POWER_SAVE_MODE_CHANGED</code>. Also true under Battery Saver, which macOS has no notion of.</td></tr>
+    <tr><td><code>highContrast</code></td><td>API 34+: <code>UiModeManager.getContrast() &gt; 0</code>. API 31 to 33: the secure setting <code>high_text_contrast_enabled</code>, read by name; if unreadable, <code>false</code>.</td><td><code>addContrastChangeListener</code> on 34+, a <code>ContentObserver</code> below</td></tr>
+  </table></div>
+  <p>Not in core, on purpose: filesystem, network, clipboard beyond the selection action mode,
+     notifications, process launching, activities, menus, the top bar, haptics, keystore. Each is an
+     extension.</p>
+  <p>Provided on the Kotlin side without asking: the selection action mode, window-focus tracking,
+     appearance sync, and a version pair the app can put in its About screen.</p>
+
+  <!-- ============================================================ -->
+  <h2 id="standard">6. Standard extensions <small>three, all opt-in</small> <span class="status caveat">same with caveat</span></h2>
+  <p>The same three, for the same reason: does an ordinary page do this constantly, with no idea it is
+     inside an app? Settings and local storage, network, clipboard.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Namespace</th><th>Scope</th><th>Calls and behaviour</th><th>Native backing</th></tr>
+    <tr><td><code>state</code> <span class="status">core</span></td><td class="scope">host</td>
+        <td>Not an extension. The store, the <code>localStorage</code> shim on the <code>local</code> scope,
+            and the <code>settings</code> scope the settings screen binds to.</td>
+        <td><code>SharedPreferences</code>, files</td></tr>
+    <tr><td><code>net</code></td><td class="scope">host</td>
+        <td><code>fetch(request)</code> proxied through <code>HttpURLConnection</code>, restricted to the
+            hosts listed at install, redirects that leave the list refused. Streams bodies through
+            <code>POST /_sash/net/fetch</code>, which on Android rides the tunnel in 3.7. Also drives the
+            interceptor's allow list and the CSP, so a plain page <code>fetch("https://...")</code> works
+            for those hosts only. Requires <code>android.permission.INTERNET</code>; the requirement check
+            fails at install if the manifest lacks it.</td>
+        <td><code>HttpURLConnection</code></td></tr>
+    <tr><td><code>clipboard</code></td><td class="scope">host</td>
+        <td><code>readText()</code>, <code>writeText()</code>, <code>clear()</code> as on macOS.
+            <code>readImage()</code> and <code>writeImage()</code> exist and move PNG bytes through a
+            <code>content://</code> URI backed by the app's cache; Android 10 and later also restrict
+            reading the clipboard to the foreground app, so <code>readText</code> from a hidden session
+            returns <code>null</code>.</td>
+        <td><code>ClipboardManager</code></td></tr>
+  </table></div>
+  <div class="callout decision"><p><b>Decided.</b> Top bar, menus, activities, files, notifications,
+     haptics, keystore, dialogs, services, and a page-visible updater are not standard extensions. Each is
+     a recipe in <a href="#recipes">section 8</a>. The package stays small and the capability listing of
+     any given app stays honest.</p></div>
+
+  <!-- ============================================================ -->
+  <h2 id="protocol">7. The extension protocol <span class="status same">shared</span></h2>
+  <pre><code>interface SashExtension {
+    val namespace: String
+    val scope: ExtensionScope get() = ExtensionScope.Host       // or Session
+    val requirements: List&lt;Requirement&gt; get() = emptyList()     // permissions, features
+    val dependencies: List&lt;String&gt; get() = emptyList()          // namespaces installed first
+
+    fun register(registry: Registry)
+    fun session(session: Session, state: SessionState) {}
+}
+
+sealed interface Requirement {
+    data class Permission(val name: String) : Requirement    // must be declared in the manifest
+    data class Feature(val name: String) : Requirement       // PackageManager.hasSystemFeature
+}</code></pre>
+
+  <p>What <code>register</code> can declare:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Declaration</th><th>Appears to the page as</th><th>Notes</th></tr>
+    <tr><td><code>registry.call&lt;A, R&gt;("name") { args -&gt; R }</code></td>
+        <td><code>sash.&lt;ns&gt;.name(args)</code></td>
+        <td><code>@Serializable</code> in and out, decoded strictly: an unknown field is
+            <code>invalid-args</code>. Overloads take <code>(args, session)</code>, <code>(session)</code>,
+            or nothing. Runs on the main thread; <code>detachedCall</code> runs on
+            <code>Dispatchers.Default</code>.</td></tr>
+    <tr><td><code>registry.route(GET, "/api/x") { req -&gt; Response }</code></td>
+        <td><code>fetch("/api/x")</code></td>
+        <td>Bodies are <code>Flow&lt;ByteArray&gt;</code>. Takes precedence over sources. Request bodies
+            arrive complete, through the tunnel when the page sent one.</td></tr>
+    <tr><td><code>registry.stream("/api/ticks") { emitter, req -&gt; }</code></td>
+        <td><code>new EventSource("/api/ticks")</code></td>
+        <td>A route specialised for SSE. Ends when the session ends.</td></tr>
+    <tr><td><code>registry.script(source, at = DocumentStart)</code></td>
+        <td>JavaScript already running</td>
+        <td>Main frame only. <code>DocumentEnd</code> is emulated (4.8).</td></tr>
+    <tr><td><code>registry.event("name")</code></td>
+        <td>Documented in capabilities</td>
+        <td>Declares events the extension emits.</td></tr>
+    <tr><td><code>registry.command("id", title = , key = )</code></td>
+        <td><code>sash:command</code></td>
+        <td>Registers a command the page may claim in context; <code>key</code> is a hardware-keyboard
+            shortcut the app's key handler may honour.</td></tr>
+  </table></div>
+
+  <p>Requirements are checked at install, before any page loads, and a missing one throws. A missing
+     permission surfaces where the developer is looking, not at first call in the field.</p>
+
+  <p>The whole haptics extension, for scale:</p>
+  <pre><code>class Haptics : SashExtension {
+    override val namespace = "haptics"
+    @Serializable enum class Pattern { alignment, levelChange, generic }
+    @Serializable data class Perform(val pattern: Pattern)
+
+    override fun register(registry: Registry) {
+        registry.call&lt;Perform, Unit&gt;("perform") { a, session -&gt;
+            session.webView.performHapticFeedback(a.pattern.constant)
+        }
+    }
+}</code></pre>
+
+  <!-- ============================================================ -->
+  <h2 id="recipes">8. Writing your own <small>the intended path</small> <span class="status same">shared</span></h2>
+  <p>The pattern is the macOS one. The page describes what it wants in an object. A Kotlin extension
+     receives the object and does the native work. If the native side will need to talk back later, the
+     extension hands the page a handle and reports through an event. The page never learns how the work
+     was done, which is exactly why the same page runs on both platforms.</p>
+
+  <h3>8.1 Save something</h3>
+  <pre><code>class Documents(private val app: Application) : SashExtension {
+    override val namespace = "documents"
+    @Serializable data class Save(val id: String, val title: String, val body: String)
+
+    override fun register(registry: Registry) {
+        registry.call&lt;Save, String&gt;("save") { doc -&gt;
+            DocumentStore(app).write(doc)        // app files, MediaStore, or ACTION_CREATE_DOCUMENT: your call
+        }
+        registry.call&lt;Unit, List&lt;DocumentSummary&gt;&gt;("list") { DocumentStore(app).list() }
+    }
+}</code></pre>
+
+  <h3>8.2 Notify, and hear back</h3>
+  <pre><code>class Alerts(private val app: Application) : SashExtension {
+    override val namespace = "alerts"
+    @Serializable data class Post(val title: String, val body: String, val actions: List&lt;String&gt;)
+    @Serializable data class Posted(val id: String, val endpoint: String)
+
+    override fun register(registry: Registry) {
+        registry.event("alerts:activated")
+        registry.call&lt;Post, Posted&gt;("post") { p, session -&gt;
+            val id = UUID.randomUUID().toString()
+            val tap = PendingIntent.getBroadcast(app, 0, AlertReceiver.intent(app, id), FLAG_IMMUTABLE)
+            NotificationManagerCompat.from(app).notify(id.hashCode(),
+                NotificationCompat.Builder(app, CHANNEL).setContentTitle(p.title).setContentText(p.body)
+                    .setSmallIcon(R.drawable.ic_alert).setContentIntent(tap).build())
+            AlertRouter.onActivate(id) { action -&gt; session.emit("alerts:activated", mapOf("id" to id, "action" to action)) }
+            Posted(id, "/_ext/alerts/$id")
+        }
+        registry.route(POST, "/_ext/alerts/:id") { req -&gt;
+            AlertRouter.activate(req.params.getValue("id"), "opened"); Response.ok
+        }
+    }
+}</code></pre>
+  <p><code>POST_NOTIFICATIONS</code> is a runtime permission on Android 13 and later. The handler requests
+     it the first time through the attached Activity; the extension's <code>requirements</code> names it so
+     the manifest cannot forget it.</p>
+
+  <h3>8.3 A top-bar action</h3>
+  <p>No toolbar extension. The page reports context; Compose renders whatever it likes from it and sends
+     taps back as commands. The page's side is one line, and it is the same line as on macOS.</p>
+  <pre><code>sash.context.set({ title: city.name, commands: ["clock.add", "clock.remove"] })</code></pre>
+  <pre><code>@Composable fun ClockActions(host: SashHost, onSettings: () -&gt; Unit) {
+    val context = host.focused?.context
+    IconButton(onClick = { host.send("clock.add") }, enabled = context?.handles("clock.add") == true) {
+        Icon(Icons.Default.Add, contentDescription = "Add city")
+    }
+    IconButton(onClick = { host.send("clock.copy") }, enabled = context?.handles("clock.copy") == true) {
+        Icon(Icons.Default.ContentCopy, contentDescription = "Copy times")
+    }
+    IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
+}</code></pre>
+
+  <h3>8.4 A menu and a shortcut</h3>
+  <p>Same mechanism. An overflow <code>DropdownMenu</code> whose items are enabled from the focused
+     session's context, and a <code>Modifier.onPreviewKeyEvent</code> on the screen that turns
+     Ctrl+N from a hardware keyboard into <code>host.send("clock.add")</code>. On macOS the same command is
+     ⌘N; the page shows whichever hint fits by reading <code>sash.platform.family</code>.</p>
+
+  <h3>8.5 Anything with hardware or permissions</h3>
+  <p>Haptics, location, camera, speech: a call, a serializable argument, the framework call in the
+     handler, and a <code>requirements</code> entry naming the permission so Sash fails at install if the
+     manifest lacks it. Runtime permission prompts happen inside the handler, through the attached
+     Activity, and a denial is <code>denied</code>.</p>
+
+  <h3>8.6 A companion process</h3>
+  <p>An extension that owns a bound <code>Service</code>, exposes <code>run(args)</code>, and streams its
+     output as an SSE route. Foreground-service rules and the process-lifetime policy are the whole
+     design, and they are the app's, which is why this is a recipe.</p>
+
+  <!-- ============================================================ -->
+  <h2 id="sources">9. Sources <span class="status caveat">same with caveat</span></h2>
+  <p>A source answers a request for a path with a response or passes. The host holds an ordered chain
+     and route handlers are consulted before it. The rules for static files are the macOS rules: correct
+     MIME types from the same table, an <code>ETag</code> from the first twelve bytes of the file's SHA-256,
+     <code>304</code> on <code>If-None-Match</code>, <code>index.html</code> for a directory, the root
+     <code>index.html</code> for a miss that does not look like an asset or that accepts HTML, and any
+     <code>..</code> segment refused rather than normalised.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Source</th><th>Serves</th><th>Notes</th></tr>
+    <tr><td><code>WebLayer.assets(path)</code></td><td>Files under <code>src/main/assets/&lt;path&gt;</code>.</td><td>Read through <code>AssetManager</code>. The example apps point this at the macOS example's <code>web</code> folder, so there is one copy.</td></tr>
+    <tr><td><code>WebLayer.directory(File)</code></td><td>Any directory.</td><td>Same rules on the filesystem.</td></tr>
+    <tr><td>Overlay</td><td>An updated web layer.</td><td>Not a case you name: configuring a web update channel puts a switchable overlay ahead of the chain.</td></tr>
+    <tr><td><code>WebLayer.socket(path, hostHeader)</code></td><td>HTTP over a Unix domain socket.</td><td><code>LocalSocket</code> in the abstract or filesystem namespace. Same hand-written HTTP/1.1 client; <code>Origin</code> and hop-by-hop headers stripped; unreachable is a 503 with <code>backend-unavailable</code>.</td></tr>
+    <tr><td><code>WebLayer.remote(URL)</code></td><td>A plain-HTTP server on a port.</td><td>Same client over TCP. Cleartext to <code>127.0.0.1</code> is permitted by the platform without a network security config; TLS origins belong behind <code>Net</code>.</td></tr>
+    <tr><td><code>WebLayer.dev(URL)</code></td><td>A dev server such as Vite.</td><td><code>remote</code> with <code>Cache-Control: no-store</code>, and the server's host added to the allow list and the CSP so live reload connects. Reach the development machine with <code>adb reverse tcp:5173 tcp:5173</code> and point at <code>http://127.0.0.1:5173</code>.</td></tr>
+    <tr><td><code>WebLayer.layered(...)</code></td><td>Several of the above in order.</td><td>First to answer wins.</td></tr>
+  </table></div>
+  <p>One Android addition on every source: an HTML response gains the <code>Content-Security-Policy</code>
+     header from the network policy (section 12) before it leaves the interceptor. A source never sets
+     that header itself.</p>
+
+  <!-- ============================================================ -->
+  <h2 id="state">10. State and storage <span class="status caveat">same with caveat</span></h2>
+  <ul>
+    <li><b>Scopes.</b> Named partitions. <code>local</code> backs the shim. <code>settings</code> backs the
+        settings screen. Developers add their own. Each scope names its persistence and its
+        visibility.</li>
+    <li><b>Persistence.</b> <code>Memory</code>; <code>Preferences(name)</code>, which is
+        <code>SharedPreferences</code> with one JSON string per scope under the key
+        <code>sash.store.&lt;scope&gt;</code>; and <code>File(directory)</code>, one JSON file per scope
+        written through <code>AtomicFile</code>. <code>SharedPreferences</code> rather than
+        <code>DataStore</code> because the store is synchronous by contract: the boot snapshot is read on
+        the WebView's bridge thread at document start, and an asynchronous backend would put a blocking
+        wait there. <code>ubiquitous</code> does not exist on Android; there is no cross-device key-value
+        store. Auto Backup restores a device, it does not sync two, and the spec says so rather than
+        pretend. Keystore is deliberately not a store backend.</li>
+    <li><b>Visibility.</b> A scope is page-visible or Kotlin-only. The page's writes to a Kotlin-only
+        scope are refused and logged.</li>
+    <li><b>Consistency.</b> Last write wins. Every write is stamped with session id and sequence so a page
+        can ignore its own echo. No transaction API.</li>
+    <li><b>Compose.</b> <code>scope.state("showSeconds", default = true)</code> returns a
+        <code>MutableState&lt;Boolean&gt;</code> that reads and writes the store, so a
+        <code>Switch</code> bound to it changes the clocks while the settings screen is still open, through
+        <code>sash:state</code>. This is <code>Scope.binding</code> under a Compose name.</li>
+    <li><b>WebView storage.</b> Cookies, IndexedDB, and Cache API belong to the origin and live in the
+        app's data directory. Sash does not shim them. Service workers are refused by a
+        <code>ServiceWorkerClient</code> that answers every request with 403, so a page cannot register one
+        by accident and find that it works on one platform and not the other.</li>
+  </ul>
+  <pre><code>@Composable fun ClockSettings(settings: Scope) {
+    var showSeconds by settings.state("showSeconds", true)
+    var appearance by settings.state("appearance", "auto")
+    Column(Modifier.padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Show seconds", Modifier.weight(1f)); Switch(showSeconds, { showSeconds = it })
+        }
+        SingleChoiceSegmentedButtonRow {
+            listOf("light", "dark", "auto").forEachIndexed { i, v -&gt;
+                SegmentedButton(selected = appearance == v, onClick = { appearance = v },
+                    shape = SegmentedButtonDefaults.itemShape(i, 3)) { Text(v.replaceFirstChar(Char::uppercase)) }
+            }
+        }
+    }
+}</code></pre>
+  <p>No 12/24-hour toggle, as on macOS: that is the system's setting, and the page reads it from
+     <code>sash.platform.hourCycle</code>.</p>
+
+  <!-- ============================================================ -->
+  <h2 id="updates">11. Updates <span class="status differs">differs</span></h2>
+  <div class="tablewrap"><table>
+    <tr><th>Channel</th><th>Mechanism</th><th>Guards</th></tr>
+    <tr><td>App</td>
+        <td>Not provided. Google Play, the in-app updates API, or another store updates the APK. Sash
+            does not download or install packages.</td>
+        <td>The store's.</td></tr>
+    <tr><td>Web layer</td>
+        <td>Identical to macOS. The same <code>manifest.json</code> and <code>manifest.json.sig</code>
+            produced by <code>Tools/sash-web-release.swift</code>; files land in
+            <code>filesDir/sash/web/&lt;version&gt;/</code>; the overlay switches; a hidden probe session must
+            reach <code>sash.ready()</code>; the previous layer is kept for rollback and older ones
+            pruned.</td>
+        <td>Ed25519 signature verified with the key in the app. <code>requires.api</code> must not exceed
+            the app's contract version. Every file's hash and size must match. If the probe times out, the
+            previous layer comes back and the version is remembered as bad.</td></tr>
+  </table></div>
+  <p>One release of the web layer serves both platforms: the manifest has no platform field, and the
+     files are the same. An app that ships a platform-specific layer uses two manifest URLs.</p>
+  <p>Ed25519 verification is a vendored implementation of RFC 8032 with no dependency, tested against the
+     RFC vectors and against manifests signed by the release tool. The platform's
+     <code>Signature.getInstance("Ed25519")</code> exists only from API 33, and two code paths would be
+     two behaviours; debug builds on 33 and later cross-check the vendored result against the platform
+     and log any disagreement.</p>
+  <p>The channel is configured on the host: <code>SashHost(app, web = , updates = UpdateConfiguration(web =
+     WebChannel(manifestURL = , publicKey = )))</code>. There is no page namespace. Kotlin observes
+     <code>host.updater.status</code> as Compose state, calls <code>check()</code> and <code>apply()</code>,
+     and shows it however the app likes. <code>relaunch()</code> does not exist; a new layer is served to
+     the next document, and <code>updater.reloadSessions()</code> reloads visible ones now. The page hears
+     <code>sash:web-updated</code> when a new layer is in.</p>
+
+  <!-- ============================================================ -->
+  <h2 id="security">12. Security <span class="status caveat">same with caveat</span></h2>
+  <ul>
+    <li>The page has an origin nothing else can share, served by nothing but the interceptor, and no route
+        to the network except through declared sources or the <code>net</code> extension.</li>
+    <li>Navigation policy denies anything outside <code>https://app.sash.invalid</code>. External links go
+        through <code>sash.open</code>.</li>
+    <li>Calls, routes, and page-visible store scopes are the entire capability surface. The capability
+        listing is the permission story.</li>
+    <li>Extension requirements are checked at install against the manifest, and missing ones throw.</li>
+    <li>Argument decoding is strict. An unknown field is <code>invalid-args</code>, not ignored.</li>
+  </ul>
+  <h3>12.1 Network policy without rule lists</h3>
+  <p>WebKit compiles the allow list into a content rule list that blocks every <code>http</code>,
+     <code>https</code>, <code>ws</code> and <code>wss</code> request the list does not permit, before the
+     request exists. Android has no such thing, and <code>shouldInterceptRequest</code> cannot see three
+     kinds of traffic: WebSocket handshakes, service-worker fetches, and the later hops of a redirect. So
+     the policy has two layers, and both come from the one allow list:</p>
+  <ol>
+    <li><b>The interceptor.</b> A request to the Sash origin is dispatched. A request to an
+        <code>http</code> or <code>https</code> host on the allow list returns <code>null</code>, and
+        Chromium fetches it. Anything else receives a synthesised <code>403</code> with an empty body and no
+        CORS headers, so a cross-origin <code>fetch</code> fails with a network error exactly as it does
+        under the WebKit blocker, and an <code>&lt;img&gt;</code> or <code>&lt;script&gt;</code> fires
+        <code>error</code>.</li>
+    <li><b>The header.</b> Every HTML document the interceptor serves carries
+        <code>Content-Security-Policy: default-src 'self' data: blob: 'unsafe-inline' 'unsafe-eval'
+        'wasm-unsafe-eval' https://h1 wss://h1 https://*.h2 wss://*.h2 …</code>, one https and wss pair per
+        allow-list pattern. <code>default-src</code> rather than <code>connect-src</code> alone, so a
+        permitted host that redirects to a forbidden one is stopped for every resource type. Everything
+        that is not network is allowed, because macOS sets no CSP and the page must not behave
+        differently. Without the <code>net</code> extension the list is empty and the header says
+        <code>'self'</code> and nothing else.</li>
+  </ol>
+  <p>Service workers are refused outright by the host's <code>ServiceWorkerClient</code>. Mixed content is
+     <code>MIXED_CONTENT_NEVER_ALLOW</code>. Safe Browsing stays on; the origin host is allow-listed through
+     <code>WebViewCompat.setSafeBrowsingAllowlist</code> so intercepted URLs are not checked against a
+     service that will never have seen them.</p>
+  <div class="callout risk"><p><b>Verified by mechanism, not end to end.</b> Chromium delivers an
+     intercepted response's headers as the real response head, which is what CSP enforcement reads. That
+     the header on an intercepted document is honoured has not been demonstrated in a Sash build yet. It
+     is the milestone-1 spike, the way the <code>localStorage</code> shim was on macOS.</p></div>
+
+  <!-- ============================================================ -->
+  <h2 id="testing">13. Testing <span class="status caveat">same with caveat</span></h2>
+  <ul>
+    <li><code>sash-testing</code> boots a host with a hidden session and awaits ready, against the real
+        assets or a fixture directory, in an instrumented test. <code>Harness.boot(host)</code>,
+        <code>Harness.waitUntil { }</code>, <code>session.evaluate(body)</code>. A real
+        <code>WebView</code> needs a device or emulator; Robolectric does not execute WebView scripts, and
+        the harness says so rather than skip silently.</li>
+    <li>Extensions can be exercised without a <code>WebView</code> by calling the registry directly with
+        JSON, in ordinary JVM unit tests, which is how most extension tests should be written.</li>
+    <li>The <code>dev</code> source over <code>adb reverse</code> plus <code>chrome://inspect</code> gives
+        the page real developer tools during development.</li>
+    <li>The example tests are the macOS ones, translated: Calculator computes from synthesised key
+        events; World Clock persists a city across two hosts on the same preferences file, flips
+        <code>showSeconds</code> from Kotlin and sees one colon, copies through the clipboard, and reports
+        the same <code>hourCycle</code> the host does.</li>
+  </ul>
+
+  <!-- ============================================================ -->
+  <h2 id="package">14. Package layout and platform <span class="status differs">differs</span></h2>
+  <p>A Gradle project at <code>android/</code> in this repository, beside the Swift package.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Module</th><th>Contents</th></tr>
+    <tr><td><code>:sash</code></td><td>Host, Session, SashView and SashWebView, Registry, Store, Sources, the interceptor, the bridge, the web updater and its Ed25519 verifier, the core surface, and the two standard extensions <code>Net</code> and <code>Clipboard</code>. <code>sash.js</code> is copied into its assets from <code>Sources/Sash/Resources/sash.js</code> at build time; there is one runtime file.</td></tr>
+    <tr><td><code>:sash-testing</code></td><td>The harness.</td></tr>
+    <tr><td><code>:examples:calculator</code>, <code>:examples:worldclock</code> <span class="status">not published</span></td><td>The macOS examples, on Android. Each adds <code>../../../Examples/&lt;App&gt;/web</code> as an assets source directory, so the web folder is shared by path, not copied.</td></tr>
+  </table></div>
+  <pre><code>android/
+  settings.gradle.kts
+  sash/src/main/kotlin/app/sash/
+    host/SashHost.kt          session/Session.kt        session/Route.kt
+    scheme/Interceptor.kt     scheme/QueueInputStream.kt
+    bridge/Bridge.kt          bridge/RuntimeScript.kt   bridge/Registry.kt
+    core/CoreSurface.kt       core/Platform.kt          core/Log.kt
+    net/Net.kt                net/NetPolicy.kt
+    store/Store.kt            store/Persistence.kt
+    sources/                  updates/WebUpdater.kt     updates/Ed25519.kt
+    compose/SashView.kt       view/SashWebView.kt
+  sash-testing/
+  examples/worldclock/        examples/calculator/</code></pre>
+  <ul>
+    <li><b>Platform.</b> minSdk 31, Kotlin 2, Compose with the current BOM. API 31 is where the system
+        accent colour exists, so <code>sash.platform.accent</code> tracks the wallpaper the way it tracks
+        the macOS accent setting.</li>
+    <li><b>Dependencies.</b> <code>androidx.webkit</code>, <code>kotlinx.serialization</code>,
+        <code>kotlinx.coroutines</code>, Compose. No HTTP client, no crypto library.</li>
+    <li><b>Threading.</b> The host, sessions, registry and event bus are confined to the main thread, the
+        counterpart of the Swift main actor. Handlers are <code>suspend</code> functions on
+        <code>Dispatchers.Main.immediate</code>; <code>detached</code> variants run on
+        <code>Dispatchers.Default</code>. Two things run elsewhere by necessity and are written for it: the
+        interceptor, which blocks a background thread waiting for the main thread to produce a response
+        head, with a time box; and the boot snapshot read, which never touches the main thread at all.
+        The main thread never calls <code>runBlocking</code> and never waits on the
+        <code>WebView</code>.</li>
+    <li><b>Skills.</b> The page-side skill is shared with macOS unchanged. The Kotlin-side skill is a
+        sibling of the Swift one, with the recipes above as its examples.</li>
+  </ul>
+
+  <!-- ============================================================ -->
+  <h2 id="decisions">15. Decisions log</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Decision</th><th>Why</th></tr>
+    <tr><td>Everything in the macOS log that names no AppKit or WebKit type stands.</td><td>The global is <code>sash</code>, routes win over sources, calls are generated, three standard extensions, the page describes and native does, no runtime prompts from Sash, strict arguments, a layer is probed before anyone sees it.</td></tr>
+    <tr><td>Origin <code>https://app.sash.invalid/</code>.</td><td>Custom schemes are opaque origins in Chromium. <code>.invalid</code> never resolves, so a missed interception cannot reach a real host; <code>androidplatform.net</code> is a real registrable domain.</td></tr>
+    <tr><td>The bridge object is <code>__sashBridge</code>.</td><td>The message listener defines a global of its own name; <code>sash</code> is the runtime's.</td></tr>
+    <tr><td>The boot snapshot is pulled, not pushed.</td><td>A start script that reads <code>__sashBoot.snapshot()</code> is fresh for every document, including reloads, with no re-installation dance. The read is synchronous and off the main thread, so the store must be readable under a lock.</td></tr>
+    <tr><td>Request bodies ride the bridge to a ticket.</td><td>Interception has no body. A loopback server is a second origin, an unstable port, and a door for other apps.</td></tr>
+    <tr><td>SSE stays the event transport; push is a fallback the runtime can switch to.</td><td>Pages may open <code>EventSource</code> directly and <code>registry.stream</code> is SSE by contract. Chromium streams an <code>InputStream</code> before end of stream. The runtime's transport is pluggable so a WebView build that misbehaves has an exit.</td></tr>
+    <tr><td>The stream starts with <code>: ok</code> and heartbeats every 15 seconds.</td><td>Chromium withholds the response head until the first read returns, and may not close a stream the page abandoned.</td></tr>
+    <tr><td>CSP is the WebSocket guard.</td><td>Interception cannot see the handshake. The header is permissive except for network so the page cannot tell it is there.</td></tr>
+    <tr><td>Sessions belong to the host.</td><td>Activities are recreated on rotation. A <code>WebView</code> on a <code>MutableContextWrapper</code> re-parents between them; a session ends only when its view leaves for good.</td></tr>
+    <tr><td>The <code>WebView</code> is created on the application context and given the Activity when attached.</td><td>The platform documents that an application-context <code>WebView</code> loses dialogs and autofill. Swapping the base context gives it an Activity whenever it is on screen.</td></tr>
+    <tr><td>No app update channel.</td><td>An app cannot swap its own APK; the store does that. Pretending otherwise would be a second, worse store.</td></tr>
+    <tr><td>Text follows the system font scale.</td><td>It is an accessibility setting. macOS has no counterpart, so this is the one place the page may reflow differently, and it is the user's choice.</td></tr>
+    <tr><td>Back is a parameter, off by default.</td><td>A single-document page with a client-side router has no history Chromium knows about. The app decides what back means.</td></tr>
+    <tr><td><code>SharedPreferences</code>, not <code>DataStore</code>.</td><td>The store is synchronous by contract and the boot snapshot is read synchronously on a non-main thread.</td></tr>
+    <tr><td>Ed25519 is vendored.</td><td>The platform has it only from API 33 and minSdk is 31. One implementation, one behaviour, no dependency.</td></tr>
+    <tr><td>Service workers are refused.</td><td>They do not run on macOS's custom scheme. A page must not find a feature on one platform that is missing on the other.</td></tr>
+    <tr><td>The web folder is shared by path.</td><td>The examples prove the property the whole document rests on. A copy would drift.</td></tr>
+  </table></div>
+
+  <!-- ============================================================ -->
+  <h2 id="open">16. Open questions</h2>
+  <ul>
+    <li>The maximum size of a <code>postMessage</code> through the message listener is undocumented. The
+        tunnel should route bodies above a megabyte through an upload ticket instead; the threshold needs
+        measuring.</li>
+    <li>Whether the service-worker script fetch itself passes through <code>ServiceWorkerClient</code>, or
+        only the fetches a registered worker makes. If not, <code>worker-src 'self'</code> in the CSP is the
+        second lock.</li>
+    <li>The high-contrast signal below API 34 is a hidden setting read by name. If it proves unreliable,
+        report <code>false</code> and say so.</li>
+    <li><code>sendBeacon</code> and form-navigation <code>POST</code>s to Kotlin routes. Probably never;
+        the checklist forbids them.</li>
+    <li>Whether macOS should also expose <code>sash.origin</code> now, or only when the first page needs
+        it.</li>
+    <li>Whether <code>sash.open</code> should offer Custom Tabs. Leaning no: the page asked to leave.</li>
+    <li>Whether a detached session should be suspended after a long time off screen, and what the page
+        sees if so. Same question as on macOS.</li>
+    <li>Whether to expose the <code>WebView</code> through <code>session.webView</code> as macOS does.
+        Leaning yes, documented as unsupported.</li>
+  </ul>
+
+  <!-- ============================================================ -->
+  <h2 id="portable">17. One page, two platforms</h2>
+  <p>The contract was designed so that the page never learns how the work was done. Two platforms test
+     that claim, and it holds with three additions to the runtime and a short list of habits for the
+     page. The additions are additive inside <code>api: 1</code> and the macOS side adopts them; a page
+     written against draft 4 keeps working.</p>
+
+  <h3>17.1 Amendments to the shared contract</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Addition</th><th>What it is</th><th>Why</th></tr>
+    <tr><td><code>sash.platform.family</code></td>
+        <td><code>"macos"</code> or <code>"android"</code>. In the boot snapshot and in every
+            <code>sash:appearance</code> payload.</td>
+        <td><code>os</code> is a bare version string; nothing else told the page which platform it is on.
+            The page needs it for exactly one thing: the words it uses for keys and gestures. Behaviour
+            should come from feature detection and CSS media queries, not from this field.</td></tr>
+    <tr><td><code>sash.origin</code></td>
+        <td>The page's origin as a string: <code>"sash://app"</code> or
+            <code>"https://app.sash.invalid"</code>.</td>
+        <td>So a page that must compare origins, for <code>postMessage</code> targets or a URL it builds
+            for another session, never hardcodes either.</td></tr>
+    <tr><td>Runtime transport block</td>
+        <td>An internal field of the boot snapshot telling <code>sash.js</code> how to send calls, how to
+            receive events, and whether to tunnel bodies.</td>
+        <td>One <code>sash.js</code> for both platforms. Not page-visible.</td></tr>
+    <tr><td><code>sash.ready()</code> from the load path</td>
+        <td>A rule, not a field: call it at the end of the script that boots the page, or from
+            <code>DOMContentLoaded</code>, never from <code>requestAnimationFrame</code> or a timer chain.</td>
+        <td>The update probe runs the page hidden. On Android animation frames do not fire in a hidden
+            <code>WebView</code>; a page that signals ready from one would fail every probe and roll back
+            every update.</td></tr>
+  </table></div>
+
+  <h3>17.2 The portability checklist</h3>
+  <ul>
+    <li><b>Pointer events, not mouse events.</b> <code>pointerdown</code>, <code>pointermove</code>,
+        <code>pointerup</code>, with <code>setPointerCapture</code>. Mouse events on a touch screen arrive
+        late, compatibility-synthesised, and never for a drag.</li>
+    <li><b>Nothing that only appears on hover.</b> A control revealed by <code>:hover</code> does not exist
+        on a phone. Reveal on selection, on long-press, or always; use <code>@media (hover: hover)</code> to
+        add the hover flourish where a pointer exists.</li>
+    <li><b>Say the shortcut in the platform's words.</b> <code>sash.platform.family === "macos"</code>
+        gives ⌘N; Android gives Ctrl+N when a hardware keyboard is present and nothing otherwise. Better
+        still, name the button.</li>
+    <li><b>Hit targets of 44 CSS pixels</b> or more for anything a finger will land on. A 6-pixel band
+        with a 26-pixel invisible grab zone was designed for a cursor; a touch needs more.</li>
+    <li><b>Modifier keys are optional.</b> A gesture that changes with Option or Shift needs a second
+        gesture, or a second control, where there is no keyboard.</li>
+    <li><b>No dependence on <code>location.host</code> or <code>location.protocol</code>.</b> Relative
+        URLs, <code>location.pathname</code>, and <code>sash.origin</code>.</li>
+    <li><b>Insets.</b> <code>viewport-fit=cover</code> and <code>env(safe-area-inset-*)</code> if the page
+        draws to an edge. Sash does not pad the view; the app decides whether the page sits under the
+        system bars.</li>
+    <li><b>Font scale.</b> Android may scale text. Layouts that break at 130% break for real users.</li>
+    <li><b>Bodies through <code>fetch</code>.</b> Not <code>sendBeacon</code>, not form navigation, not
+        <code>XMLHttpRequest</code>, when the destination is a native route.</li>
+    <li><b><code>&lt;dialog&gt;</code>, <code>Intl</code>, <code>CSS custom properties</code> are safe.</b>
+        Both engines are current.</li>
+    <li><b>Ready from the load path.</b> See above.</li>
+  </ul>
+
+  <h3>17.3 What World Clock would change</h3>
+  <p>The page is close. The Kotlin side of the example is the sketch in section 2. The web folder needs
+     five edits, all of them improvements on macOS too:</p>
+  <ol>
+    <li>The scrubber and the row reordering listen to <code>mousedown</code>, <code>mousemove</code>,
+        <code>mouseup</code>. Pointer events with capture, and the drag ends on
+        <code>pointercancel</code> as well as <code>pointerup</code>.</li>
+    <li>The remove button and the enlarged thumb appear on <code>li:hover</code>. On a coarse pointer,
+        show the remove control on a selected row, or make swipe-to-remove the gesture, and keep the hover
+        reveal under <code>@media (hover: hover)</code>.</li>
+    <li>The band's grab zone grows on <code>(pointer: coarse)</code>, and the fine step that Option
+        selects becomes a second gesture, such as a long-press before the drag.</li>
+    <li>The empty state reads "Press ⌘N or the + button". It reads the family and says "Tap +" on
+        Android.</li>
+    <li>The bar at the bottom respects <code>env(safe-area-inset-bottom)</code>.</li>
+  </ol>
+  <p>Nothing about state, context, commands, settings, clipboard, appearance or the hour cycle changes.
+     Those are the contract, and the contract is the same.</p>
+
+  <!-- ============================================================ -->
+  <h2 id="divergence">Appendix: divergence table</h2>
+  <p>Each row names the mechanism on both platforms and how the Android claim was checked:
+     <span class="v">verified</span> against the platform or Chromium source cited;
+     <span class="m">mechanism</span>, where the source shows the machinery but the end-to-end behaviour has
+     not been run in a Sash build; <span class="u">unverified</span>, with the fallback in the text.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Concern</th><th>macOS</th><th>Android</th><th>Parity</th><th>Checked</th></tr>
+    <tr><td>Origin</td><td><code>sash://app/</code>, <code>WKURLSchemeHandler</code></td><td><code>https://app.sash.invalid/</code>, <code>shouldInterceptRequest</code></td><td>caveat: <code>location.host</code> differs</td><td class="v">verified: Chromium <code>cors-and-webview-api.md</code>; <code>WebViewAssetLoader</code> rationale</td></tr>
+    <tr><td>Request interception</td><td>task with body</td><td>no body; <code>POST</code> is delivered; redirect hops, WebSockets, service workers invisible; background pool that may block</td><td>caveat</td><td class="v">verified: <code>WebViewClient</code>, <code>WebResourceRequest</code>, <code>aw_contents_io_thread_client.cc</code>, WebView team thread</td></tr>
+    <tr><td>Bodies on routes</td><td>native</td><td>fetch wrapper → <code>__sashBridge</code> → ticket → <code>GET /_sash/r/&lt;ticket&gt;</code></td><td>same for <code>fetch</code>; differs for <code>sendBeacon</code>, form <code>POST</code></td><td class="m">design over verified parts</td></tr>
+    <tr><td>SSE</td><td>chunked task</td><td>blocking <code>InputStream</code> read on a pool thread; 2 KiB reads when <code>available()</code> is unknown; forwarded before EOF; head withheld until first read</td><td>caveat: preamble and heartbeat required</td><td class="v">verified: <code>android_stream_reader_url_loader.cc</code></td></tr>
+    <tr><td>Call bridge</td><td><code>WKScriptMessageHandlerWithReply</code> "sash"</td><td><code>WebViewCompat.addWebMessageListener</code> "__sashBridge", origin rule <code>https://app.sash.invalid</code>; <code>JavaScriptReplyProxy</code> per frame; UI thread</td><td>same page contract</td><td class="v">verified: <code>WebViewCompat</code>, <code>JavaScriptReplyProxy</code>; <span class="u">size limit unverified</span></td></tr>
+    <tr><td>Boot snapshot</td><td>user script re-installed per navigation</td><td><code>addDocumentStartJavaScript</code> once + <code>addJavascriptInterface("__sashBoot").snapshot()</code>; top-frame guard; <code>DOMContentLoaded</code> for document-end</td><td>same; also covers reload</td><td class="v">verified: <code>WebViewCompat</code>, <code>ScriptHandler</code>, <code>WebView</code></td></tr>
+    <tr><td>Network policy</td><td><code>WKContentRuleList</code></td><td>403 without CORS from interception + CSP header on HTML + <code>ServiceWorkerClient</code> returning 403</td><td>caveat: CSP exists on Android only</td><td class="m">limits verified; CSP on intercepted documents by mechanism</td></tr>
+    <tr><td>External links, <code>_blank</code></td><td><code>decidePolicyFor</code>, <code>createWebViewWith</code></td><td><code>shouldOverrideUrlLoading</code> → <code>ACTION_VIEW</code>; <code>setSupportMultipleWindows(true)</code> + <code>onCreateWindow</code> throwaway</td><td>same</td><td class="v">verified: <code>WebSettings</code>, <code>WebChromeClient</code></td></tr>
+    <tr><td>Dialogs</td><td><code>NSAlert</code></td><td><code>onJsAlert</code>, <code>onJsConfirm</code>, <code>onJsPrompt</code> + <code>JsResult</code></td><td>same</td><td class="v">verified: <code>WebChromeClient</code></td></tr>
+    <tr><td>Zoom, text</td><td>magnification off</td><td><code>setSupportZoom(false)</code>, <code>setBuiltInZoomControls(false)</code>; text zoom follows system font scale</td><td>differs on purpose</td><td class="v">verified: <code>AwSettings</code>, <code>WebSettings</code></td></tr>
+    <tr><td>Dark mode</td><td>page owns</td><td><code>setAlgorithmicDarkeningAllowed(false)</code>; DayNight theme</td><td>same</td><td class="v">verified: <code>WebSettingsCompat</code></td></tr>
+    <tr><td>Inspector</td><td><code>isInspectable</code> in DEBUG</td><td>automatic in debuggable builds</td><td>same</td><td class="v">verified: <code>WebView</code></td></tr>
+    <tr><td>Session ownership</td><td>view owns</td><td>host owns; <code>MutableContextWrapper</code>, base context swapped on attach; end unless <code>isChangingConfigurations</code></td><td>caveat</td><td class="m">context rule verified (<code>WebView</code>); re-parenting by mechanism (<code>MutableContextWrapper</code>, <code>AwSettings.updateContext</code>)</td></tr>
+    <tr><td>Render process gone</td><td>reload</td><td><code>onRenderProcessGone</code> → replace <code>WebView</code>, same id, return true</td><td>same</td><td class="v">verified: <code>WebViewClient</code></td></tr>
+    <tr><td>Probe session</td><td>offscreen <code>NSWindow</code></td><td>unattached <code>WebView</code>; scripts run, rAF off</td><td>caveat: ready not from rAF</td><td class="v">verified: <code>AwContents</code>; timer policy from Chromium's hidden-page throttling</td></tr>
+    <tr><td>Ed25519</td><td>CryptoKit</td><td>vendored RFC 8032; platform has it from API 33</td><td>same</td><td class="v">verified: libcore <code>Signature</code> table</td></tr>
+    <tr><td>Platform: appearance, locale, accent</td><td>AppKit</td><td><code>Configuration.uiMode</code>, <code>Configuration.locales</code>, <code>system_accent1_500</code>; <code>onConfigurationChanged</code></td><td>same</td><td class="v">public API</td></tr>
+    <tr><td>Platform: hour cycle</td><td><code>Locale.hourCycle</code></td><td><code>DateFormat.is24HourFormat</code>; observer on <code>TIME_12_24</code></td><td>same</td><td class="v">public API</td></tr>
+    <tr><td>Platform: reduced motion</td><td><code>accessibilityDisplayShouldReduceMotion</code></td><td><code>ValueAnimator.areAnimatorsEnabled()</code>; observer on <code>ANIMATOR_DURATION_SCALE</code></td><td>caveat: also true under Battery Saver</td><td class="v">verified: <code>ValueAnimator</code></td></tr>
+    <tr><td>Platform: high contrast</td><td><code>accessibilityDisplayShouldIncreaseContrast</code></td><td>API 34+: <code>UiModeManager.getContrast()</code>; below: <code>high_text_contrast_enabled</code></td><td>caveat</td><td class="v">API 34 verified: <code>UiModeManager</code>; <span class="u">hidden key unverified</span></td></tr>
+    <tr><td>Store</td><td><code>UserDefaults</code>, file, iCloud KV</td><td><code>SharedPreferences</code>, <code>AtomicFile</code>, none</td><td>minus <code>ubiquitous</code></td><td>n/a</td></tr>
+    <tr><td>Threading</td><td>main actor; in-line task callbacks</td><td>main-confined host; interception blocks for the head with a 504 time box; body from a coroutine; <code>detached</code> on <code>Dispatchers.Default</code>; snapshot read never on main</td><td>same</td><td class="v">verified: interception thread model</td></tr>
+  </table></div>
+</main>
+</body>
+</html>
