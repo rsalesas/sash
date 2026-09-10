@@ -8,11 +8,12 @@
 <body>
 <main>
   <ul id="clocks" class="clocks"></ul>
-  <p id="empty" class="empty" hidden>No cities yet. Press <kbd>⌘N</kbd> or the + button.</p>
+  <p id="empty" class="empty" hidden>No cities yet. Press <kbd>&#8984;N</kbd> or the + button.</p>
   <footer class="bar">
-    <span class="muted">Times follow the system's 24-hour setting.</span>
+    <span id="local" class="muted"></span>
     <span class="spacer"></span>
-    <span id="count" class="muted"></span>
+    <span id="today" class="muted"></span>
+    <button id="now" class="nowbtn" type="button" hidden></button>
   </footer>
 </main>
 

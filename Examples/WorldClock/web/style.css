@@ -1,29 +1,100 @@
-:root { --bg: #ffffff; --fg: #1c1c1e; --muted: #7a7a80; --line: #e6e6ea; --row: #f7f7f9; --accent: var(--sash-accent, #0a84ff); }
-:root[data-sash-appearance="dark"] { --bg: #1e1e21; --fg: #f2f2f7; --muted: #98989f; --line: #303035; --row: #26262a; }
-html, body { height: 100%; margin: 0; }
-body { background: var(--bg); color: var(--fg); font: 14px -apple-system, system-ui, sans-serif; -webkit-user-select: none; }
+:root {
+  --bg: #ffffff; --fg: #1c1c1e; --muted: #6e6e75; --faint: #8a8a93;
+  --line: #e6e6ec; --row: #f4f4f7; --hover: #eceef3;
+  --chrome: #f1f1f4; --chrome-line: #dbdbe1;
+  --accent: var(--sash-accent, #007aff);
+  /* The day band. One ramp, both appearances: night until 05:00, dawn peaking
+     at 06:30, full daylight 08:00-16:00, dusk peaking at 17:30, night from 19:00. */
+  --night: #3b4666; --twi: #dda15e; --day: #dbe7f3;
+}
+:root[data-sash-appearance="dark"] {
+  --bg: #1e1e21; --fg: #f2f2f7; --muted: #98989f; --faint: #78787f;
+  --line: #303036; --row: #2a2a2f; --hover: #33333b;
+  --chrome: #2c2c31; --chrome-line: #3a3a41;
+  --accent: var(--sash-accent, #0a84ff);
+}
+
+html, body { height: 100%; margin: 0; overflow: hidden; }
+body { background: var(--bg); color: var(--fg); font: 14px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased; -webkit-user-select: none; }
 main { height: 100%; display: flex; flex-direction: column; }
-.clocks { list-style: none; margin: 0; padding: 8px; flex: 1; overflow-y: auto; }
-.clocks li { display: grid; grid-template-columns: 1fr auto auto auto; gap: 12px; align-items: baseline; padding: 10px 12px; border-radius: 8px; }
-.clocks li:nth-child(odd) { background: var(--row); }
-.clocks .name { font-weight: 600; }
-.clocks .zone { color: var(--muted); font-size: 12px; margin-left: 8px; }
-.clocks .time { font-size: 22px; font-variant-numeric: tabular-nums; font-weight: 300; }
-.clocks .offset { color: var(--muted); font-size: 12px; min-width: 5em; text-align: right; }
-.clocks .remove { opacity: 0; background: none; border: 0; color: var(--muted); font-size: 14px; width: 1.6em; }
-.clocks li:hover .remove { opacity: 1; }
-.empty { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--muted); margin: 0; padding: 0 24px; }
+
+/* The scroller is a sibling of the bar, so the bar cannot scroll away, and it
+   owns the rubber band, so a hard pull cannot drag the page under it either. */
+.clocks { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0;
+  overflow-y: auto; overscroll-behavior: contain; }
+.clocks li { position: relative; box-sizing: border-box; display: grid;
+  grid-template-columns: 1fr 128px auto 20px; gap: 10px; align-items: center;
+  height: 57px; padding: 0 10px 0 16px; }
+/* The rule spans the row's content box: both ends match the row's padding,
+   rather than tucking in at the leading edge and running out at the other. */
+.clocks li::after { content: ""; position: absolute; left: 16px; right: 10px; bottom: 0;
+  height: 1px; background: var(--line); }
+.clocks li:last-child::after { display: none; }
+.clocks li:hover { background: var(--hover); }
+
+.name { display: block; font-size: 13.5px; font-weight: 600; letter-spacing: -.006em; }
+.zone { display: block; font-size: 10.5px; color: var(--faint); margin-top: 2px; }
+
+.band { position: relative; display: block; height: 6px; border-radius: 3px;
+  background: linear-gradient(to right,
+    var(--night) 0%, var(--night) 20.8%, var(--twi) 27.1%, var(--day) 33.3%,
+    var(--day) 66.7%, var(--twi) 72.9%, var(--night) 79.2%, var(--night) 100%); }
+/* The band is the control: drag a thumb and every clock moves with it. A 6px
+   rail is too thin to catch, so the band carries a taller invisible grab zone,
+   and the marker stays a hairline at rest and grows into a thumb under the
+   cursor — the list still reads as a list until you reach for one. */
+.band { cursor: ew-resize; }
+.band::before { content: ""; position: absolute; left: -8px; right: -8px; top: -10px; bottom: -10px; }
+.mark { position: absolute; top: -4px; width: 2px; height: 14px; margin-left: -1px; pointer-events: none;
+  border-radius: 1px; background: var(--fg); box-shadow: 0 0 0 1.5px var(--bg);
+  transition: width .12s ease, height .12s ease, top .12s ease, margin-left .12s ease; }
+.clocks li:hover .mark, .clocks li.scrubbing .mark { width: 5px; height: 21px; top: -7.5px;
+  margin-left: -2.5px; border-radius: 2.5px; box-shadow: 0 0 0 1.5px var(--hover); }
+.clocks li.scrubbing { background: var(--hover); }
+
+.nowbtn { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 7px; border-radius: 5px;
+  border: 1px solid var(--chrome-line); background: var(--bg); color: var(--fg); font: inherit; font-size: 11.5px;
+  line-height: 1; font-variant-numeric: tabular-nums; }
+.nowbtn:hover { border-color: var(--accent); color: var(--accent); }
+.nowbtn[hidden] { display: none; }
+
+.rhs { text-align: right; }
+.time { display: block; font-size: 22px; font-weight: 300; letter-spacing: -.022em;
+  line-height: 1.05; font-variant-numeric: tabular-nums; }
+.sec, .ap { font-size: .58em; color: var(--faint); letter-spacing: 0; }
+.off { display: block; font-size: 11px; color: var(--muted); margin-top: 3px;
+  font-variant-numeric: tabular-nums; }
+.dayt { color: var(--accent); }
+
+/* The slot is always reserved, so revealing the control never shifts the row. */
+.remove { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+  padding: 0; border: 0; border-radius: 50%; background: none; color: var(--faint); visibility: hidden; }
+.clocks li:hover .remove { visibility: visible; }
+.remove:hover { color: var(--fg); }
+
+.empty { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center;
+  color: var(--muted); margin: 0; padding: 0 24px; }
 /* An explicit display rule beats the hidden attribute; say it again. */
 .empty[hidden] { display: none; }
 kbd { font: inherit; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
-.bar { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-top: 1px solid var(--line); }
+
+/* The bottom padding balances the top border, so the content box sits in the
+   middle of the bar rather than a pixel below it; the flat line-height keeps
+   the ink centred instead of leaving descender space no glyph here uses. */
+.bar { flex: none; box-sizing: border-box; height: 38px; display: flex; align-items: center; gap: 12px;
+  padding: 0 15px 0.5px; background: var(--chrome); border-top: 1px solid var(--chrome-line); }
 .spacer { flex: 1; }
-.muted { color: var(--muted); }
-dialog { border: 0; border-radius: 12px; padding: 20px 22px; background: var(--bg); color: var(--fg); box-shadow: 0 12px 40px rgba(0,0,0,.3); min-width: 300px; }
+.muted { color: var(--muted); font-size: 12.5px; line-height: 1; font-variant-numeric: tabular-nums; }
+
+dialog { border: 1px solid var(--chrome-line); border-radius: 12px; padding: 20px 22px; background: var(--bg); color: var(--fg);
+  box-shadow: 0 12px 40px rgba(0,0,0,.3); min-width: 300px; }
 dialog::backdrop { background: rgba(0,0,0,.25); }
 dialog h2 { margin: 0 0 12px; font-size: 15px; }
 dialog label { display: grid; gap: 4px; margin: 8px 0; font-size: 12px; color: var(--muted); }
-dialog input { font: inherit; font-size: 14px; color: var(--fg); background: var(--row); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+dialog input { font: inherit; font-size: 14px; color: var(--fg); background: var(--row);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
 dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 14px 0 0; padding: 0; }
-dialog button { font: inherit; padding: 5px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--row); color: var(--fg); }
+dialog button { font: inherit; padding: 5px 14px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--row); color: var(--fg); }
 dialog button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }

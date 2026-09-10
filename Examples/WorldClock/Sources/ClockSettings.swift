@@ -2,7 +2,7 @@ import Sash
 import SwiftUI
 
 /// Binds straight to the store. The page watches the same scope, so flipping
-/// the toggle changes the clocks while the window is still open. There is no
+/// a control changes the clocks while the window is still open. There is no
 /// 12/24-hour toggle on purpose: that is the system's setting, and the page
 /// reads it from `sash.platform.hourCycle`.
 struct ClockSettings: View {
@@ -11,6 +11,15 @@ struct ClockSettings: View {
     var body: some View {
         Form {
             Toggle("Show seconds", isOn: settings.binding("showSeconds", default: true))
+            // Appearance is one of the few system settings an app is expected
+            // to override, so this one does get a control; the page reads the
+            // same key and falls back to sash.platform.appearance on "auto".
+            Picker("Appearance", selection: settings.binding("appearance", default: "auto")) {
+                Text("Light").tag("light")
+                Text("Dark").tag("dark")
+                Text("Auto").tag("auto")
+            }
+            .pickerStyle(.segmented)
         }
         .formStyle(.grouped)
         .frame(width: 320)
