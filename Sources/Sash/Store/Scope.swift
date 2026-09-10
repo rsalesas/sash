@@ -54,6 +54,44 @@ public final class Scope {
         for k in keys { write(k, nil, sessionID: nil) }
     }
 
+    /// The key `migrate(to:)` records progress under. Kept by `prune`.
+    public static let versionKey = "__version"
+
+    /// Drops every key not named, and returns the ones it dropped. You name
+    /// what the release still has, so a setting you removed a year ago goes
+    /// without anyone having to remember it existed.
+    @discardableResult
+    public func prune(keeping keep: Set<String>) -> [String] {
+        let gone = keys.filter { !keep.contains($0) && $0 != Scope.versionKey }
+        for k in gone { remove(k) }
+        return gone
+    }
+
+    /// Moves a value to a new key. Does nothing when there is nothing to move,
+    /// or when the destination already holds something — a rename that ran
+    /// halfway must not overwrite whatever replaced it.
+    @discardableResult
+    public func rename(_ from: String, to: String) -> Bool {
+        guard let existing = value(from), value(to) == nil else { return false }
+        set(to, json: existing)
+        remove(from)
+        return true
+    }
+
+    /// Runs the steps this scope has not seen, once each, numbered from 1, and
+    /// records how far it got. Safe to call on every launch.
+    @discardableResult
+    public func migrate(to version: Int, _ step: (Int) -> Void) -> Int {
+        var at = get(Scope.versionKey, default: 0)
+        guard at < version else { return at }
+        while at < version {
+            at += 1
+            step(at)
+        }
+        set(Scope.versionKey, at)
+        return at
+    }
+
     /// A SwiftUI binding onto one key.
     public func binding<T: Codable>(_ key: String, default fallback: T) -> Binding<T> {
         Binding(

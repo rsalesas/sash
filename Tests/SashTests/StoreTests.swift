@@ -23,6 +23,51 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(store.seq, 2)
     }
 
+    func testPruneDropsWhatTheReleaseNoLongerHas() {
+        let store = Store(configuration: .memory)
+        let s = store.scope("settings")
+        s.set("showSeconds", true)
+        s.set("use24h", true)          // a setting an older release had
+        s.set(Scope.versionKey, 3)
+
+        let gone = s.prune(keeping: ["showSeconds"])
+
+        XCTAssertEqual(gone, ["use24h"])
+        XCTAssertEqual(s.get("showSeconds"), true)
+        XCTAssertNil(s.value("use24h"))
+        XCTAssertEqual(s.get(Scope.versionKey), 3, "the version key survives pruning")
+    }
+
+    func testRenameMovesAValueButNeverClobbersOne() {
+        let store = Store(configuration: .memory)
+        let s = store.scope("settings")
+        s.set("secs", true)
+
+        XCTAssertTrue(s.rename("secs", to: "showSeconds"))
+        XCTAssertEqual(s.get("showSeconds"), true)
+        XCTAssertNil(s.value("secs"))
+
+        XCTAssertFalse(s.rename("absent", to: "showSeconds"), "nothing to move")
+        s.set("secs", false)
+        XCTAssertFalse(s.rename("secs", to: "showSeconds"), "destination is taken")
+        XCTAssertEqual(s.get("showSeconds"), true, "and it is left alone")
+    }
+
+    func testMigrateRunsEachStepOnceAndRemembers() {
+        let store = Store(configuration: .memory)
+        let s = store.scope("settings")
+        var ran: [Int] = []
+
+        XCTAssertEqual(s.migrate(to: 2) { ran.append($0) }, 2)
+        XCTAssertEqual(ran, [1, 2])
+
+        XCTAssertEqual(s.migrate(to: 2) { ran.append($0) }, 2)
+        XCTAssertEqual(ran, [1, 2], "a second call on the same version does nothing")
+
+        XCTAssertEqual(s.migrate(to: 4) { ran.append($0) }, 4)
+        XCTAssertEqual(ran, [1, 2, 3, 4], "only the steps it has not seen")
+    }
+
     func testTypedValues() {
         struct City: Codable, Equatable { var name: String; var tz: String }
         let store = Store(configuration: .memory)
