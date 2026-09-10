@@ -6,21 +6,23 @@ import SwiftUI
 /// 12/24-hour toggle on purpose: that is the system's setting, and the page
 /// reads it from `sash.platform.hourCycle`.
 struct ClockSettings: View {
+    @Bindable var host: Sash.Host
     @Bindable var settings: Scope
 
     var body: some View {
         Form {
             Toggle("Show seconds", isOn: settings.binding("showSeconds", default: true))
-            // Appearance is one of the few system settings an app is expected
-            // to override, so this one does get a control; the page reads the
-            // same key and falls back to sash.platform.appearance on "auto".
-            Picker("Appearance", selection: settings.binding("appearance", default: "auto")) {
-                Text("Light").tag("light")
-                Text("Dark").tag("dark")
-                Text("Auto").tag("auto")
+            // Appearance is Sash's own: setting it moves the window chrome and
+            // the page together, and it is remembered without this app storing
+            // anything.
+            Picker("Appearance", selection: $host.appearance) {
+                Text("Light").tag(Appearance.light)
+                Text("Dark").tag(Appearance.dark)
+                Text("Auto").tag(Appearance.auto)
             }
             .pickerStyle(.segmented)
         }
+        .preferredColorScheme(host.colorScheme)
         .formStyle(.grouped)
         .frame(width: 320)
         .fixedSize()

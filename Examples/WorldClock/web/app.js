@@ -31,14 +31,6 @@
 
   // The locale alone does not say whether the user wants 24-hour time; the
   // system setting does, and Sash passes it through as platform.hourCycle.
-  // Sash sets data-sash-appearance from the system; the setting overrides it
-  // unless it is on "auto", in which case the system wins as before.
-  function applyAppearance() {
-    const pref = setting("appearance", "auto");
-    const a = pref === "light" || pref === "dark" ? pref : (inSash ? sash.platform.appearance : "light");
-    document.documentElement.setAttribute("data-sash-appearance", a);
-  }
-
   const locale = () => inSash ? sash.platform.locale : undefined;
   const hourCycle = () => inSash ? sash.platform.hourCycle : undefined;
 
@@ -109,7 +101,6 @@
         <button class="remove" title="Remove ${esc(c.name)}" data-remove="${i}">${X}</button></li>`;
     }).join("");
     empty.hidden = cities.length > 0;
-    applyAppearance();
     tick();
     if (inSash) sash.context.set({
       title: "World Clock",
