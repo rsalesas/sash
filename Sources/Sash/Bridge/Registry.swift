@@ -227,10 +227,12 @@ public final class Registry {
 
     // MARK: Coding
 
+    /// Call arguments decode strictly: a field the handler's type does not
+    /// declare is `invalid-args`, not silently dropped.
     static func decode<A: Decodable>(_ args: JSONValue) throws -> A {
         if A.self == JSONValue.self { return args as! A }
         do {
-            return try args.decode(A.self)
+            return try JSONValueDecoder(strict: true).decode(A.self, from: args)
         } catch let e as DecodingError {
             throw CallError.invalidArgs(e.sashDescription)
         }

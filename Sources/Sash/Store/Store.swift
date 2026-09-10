@@ -29,6 +29,11 @@ public final class Store {
         switch config.persistence {
         case .memory: backend = MemoryBackend()
         case .userDefaults(let suite): backend = UserDefaultsBackend(suite: suite, prefix: configuration.defaultsKeyPrefix)
+        case .file(let directory): backend = FileBackend(directory: directory)
+        case .ubiquitous:
+            let u = UbiquitousBackend(prefix: configuration.defaultsKeyPrefix)
+            backend = u
+            watchUbiquitousChanges(u)
         }
         let scope = Scope(name: config.name, configuration: config, backend: backend, store: self)
         scopes[config.name] = scope
@@ -67,6 +72,22 @@ public final class Store {
                 continue
             }
             scope.write(op.key, op.value, sessionID: sessionID)
+        }
+    }
+
+    @ObservationIgnored private var ubiquitousObserver: (any NSObjectProtocol)?
+
+    private func watchUbiquitousChanges(_ backend: UbiquitousBackend) {
+        guard ubiquitousObserver == nil else { return }
+        ubiquitousObserver = NotificationCenter.default.addObserver(
+            forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: NSUbiquitousKeyValueStore.default, queue: .main
+        ) { [weak self] note in
+            let scopes = backend.changedScopes(in: note)
+            Task { @MainActor in
+                guard let self else { return }
+                for name in scopes { self.scopes[name]?.reloadFromBackend() }
+            }
         }
     }
 

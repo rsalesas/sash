@@ -6,6 +6,12 @@ public enum Persistence: Sendable, Hashable {
     /// `UserDefaults`, one JSON string per scope under `sash.store.<scope>`.
     /// Readable with `defaults read`.
     case userDefaults(suite: String? = nil)
+    /// One JSON file per scope in `directory`, written atomically.
+    case file(directory: URL)
+    /// iCloud key-value storage. Needs the iCloud key-value entitlement, is
+    /// limited to 1 MB in total, and syncs when Apple decides. Changes that
+    /// arrive from another device surface as ordinary store changes.
+    case ubiquitous
 }
 
 /// Whether the page may see a scope at all.
@@ -92,5 +98,71 @@ struct UserDefaultsBackend: StoreBackend, @unchecked Sendable {
         }
         guard let data = try? JSONValue.object(values).serialized() else { return }
         defaults.set(String(decoding: data, as: UTF8.self), forKey: prefix + scope)
+    }
+}
+
+final class FileBackend: StoreBackend {
+    let directory: URL
+
+    init(directory: URL) {
+        self.directory = directory
+    }
+
+    private func url(_ scope: String) -> URL {
+        directory.appendingPathComponent(scope + ".json")
+    }
+
+    func load(scope: String) -> [String: JSONValue] {
+        guard let data = try? Data(contentsOf: url(scope)),
+              let value = try? JSONValue(parsing: data), let object = value.objectValue else { return [:] }
+        return object
+    }
+
+    func save(scope: String, values: [String: JSONValue]) {
+        let target = url(scope)
+        if values.isEmpty {
+            try? FileManager.default.removeItem(at: target)
+            return
+        }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            var data = try JSONValue.object(values).serialized()
+            data.append(0x0A)
+            try data.write(to: target, options: .atomic)
+        } catch {
+            Log.error("store: could not write \(target.path): \(error)")
+        }
+    }
+}
+
+/// `NSUbiquitousKeyValueStore`, one JSON string per scope. The store watches
+/// for external changes and re-reads the scopes they name.
+final class UbiquitousBackend: StoreBackend, @unchecked Sendable {
+    let prefix: String
+    private let kv = NSUbiquitousKeyValueStore.default
+
+    init(prefix: String) {
+        self.prefix = prefix
+        kv.synchronize()
+    }
+
+    func load(scope: String) -> [String: JSONValue] {
+        guard let text = kv.string(forKey: prefix + scope),
+              let value = try? JSONValue(parsing: Data(text.utf8)), let object = value.objectValue else { return [:] }
+        return object
+    }
+
+    func save(scope: String, values: [String: JSONValue]) {
+        if values.isEmpty {
+            kv.removeObject(forKey: prefix + scope)
+        } else if let data = try? JSONValue.object(values).serialized() {
+            kv.set(String(decoding: data, as: UTF8.self), forKey: prefix + scope)
+        }
+    }
+
+    /// The scope names touched by an external-change notification.
+    func changedScopes(in notification: Notification) -> [String] {
+        let keys = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String] ?? []
+        return keys.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
     }
 }

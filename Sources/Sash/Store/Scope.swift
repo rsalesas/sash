@@ -12,7 +12,7 @@ public final class Scope {
     public private(set) var values: [String: JSONValue]
 
     @ObservationIgnored private let backend: any StoreBackend
-    @ObservationIgnored private unowned let store: Store
+    @ObservationIgnored private weak var store: Store?
 
     init(name: String, configuration: ScopeConfiguration, backend: any StoreBackend, store: Store) {
         self.name = name
@@ -62,10 +62,21 @@ public final class Scope {
         )
     }
 
+    /// Re-reads persistence and reports every key that differs, as changes
+    /// from nowhere in particular. Used when another device wrote.
+    func reloadFromBackend() {
+        let fresh = backend.load(scope: name)
+        let keys = Set(values.keys).union(fresh.keys)
+        for key in keys.sorted() where values[key] != fresh[key] {
+            if let v = fresh[key] { values[key] = v } else { values.removeValue(forKey: key) }
+            store?.commit(self, key: key, value: fresh[key], sessionID: nil)
+        }
+    }
+
     func write(_ key: String, _ value: JSONValue?, sessionID: String?) {
         if values[key] == value { return }
         if let value { values[key] = value } else { values.removeValue(forKey: key) }
         backend.save(scope: name, values: values)
-        store.commit(self, key: key, value: value, sessionID: sessionID)
+        store?.commit(self, key: key, value: value, sessionID: sessionID)
     }
 }
