@@ -279,6 +279,17 @@
      <code>WKWebView</code> outside a window does not load, so Sash owns that window. Used by the test
      harness and by apps that want a JavaScript worker without UI.</p>
 
+  <h3>4.7 No browser showing through</h3>
+  <p>The view is an app's interface, not a document the user browses, so the affordances WebKit gives a
+     browser are taken out of it. There is no context menu: the one WebKit builds — Reload, Back,
+     Forward, Services, Open in New Window — is emptied before it can open, and an empty menu is one
+     AppKit never shows. The page still receives its <code>contextmenu</code> event, so a page that wants
+     a menu draws its own. Reload is refused wherever the user could reach it: <code>reload:</code> and
+     <code>reloadFromOrigin:</code> do nothing and validate as disabled, so a menu item wired to either
+     greys out. Magnification is off. <code>Session.reload()</code> and the updater still reload the
+     page — reloading is the app's decision, not the user's. Debug builds set <code>isInspectable</code>,
+     so the inspector is one Safari Develop menu away.</p>
+
   <!-- ============================================================ -->
   <h2 id="core">5. The core surface <small>always present, deliberately small</small></h2>
   <table>

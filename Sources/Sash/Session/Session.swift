@@ -32,7 +32,7 @@ public final class Session: Identifiable {
         self.isHidden = hidden
 
         let configuration = host.makeConfiguration()
-        webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
+        webView = SashWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
         webView.allowsMagnification = false
         #if DEBUG
         webView.isInspectable = true
