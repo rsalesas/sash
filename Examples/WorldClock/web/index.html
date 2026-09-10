@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>World Clock</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <ul id="clocks" class="clocks"></ul>
+  <p id="empty" class="empty" hidden>No cities yet. Press <kbd>⌘N</kbd> or the + button.</p>
+  <footer class="bar">
+    <label><input type="checkbox" id="use24h"> 24-hour</label>
+    <span class="spacer"></span>
+    <span id="count" class="muted"></span>
+  </footer>
+</main>
+
+<dialog id="add">
+  <form method="dialog" id="addForm">
+    <h2>Add a city</h2>
+    <label>Name <input id="name" required autocomplete="off" placeholder="Tokyo"></label>
+    <label>Time zone <input id="tz" list="zones" required placeholder="Asia/Tokyo"></label>
+    <datalist id="zones"></datalist>
+    <menu>
+      <button value="cancel" type="button" id="cancel">Cancel</button>
+      <button value="add" class="primary">Add</button>
+    </menu>
+  </form>
+</dialog>
+<script src="app.js"></script>
+</body>
+</html>

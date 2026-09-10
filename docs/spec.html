@@ -53,7 +53,7 @@
 <body>
 <main>
   <h1>Sash</h1>
-  <p class="sub">Specification, draft 2. A Swift package that hosts a single-page web app as a native
+  <p class="sub">Specification, draft 3, matching milestone 1 as built. A Swift package that hosts a single-page web app as a native
      macOS app: your SwiftUI, your windows, your menus; the web app in a view; extensions as the only door
      between them. See <a href="brainstorming.html">brainstorming</a> for where this came from.</p>
 
@@ -461,11 +461,12 @@ sash.on("alerts:activated", ({ id, action }) => router.go(`/clock/${id}`))</code
      sends taps back as commands. The page's side is one line.</p>
   <pre><code>sash.context.set({ title: city.name, commands: ["clock.add", "clock.remove"] })</code></pre>
   <pre><code>struct ClockToolbar: ToolbarContent {
-    let context: Sash.Context?
+    let host: Sash.Host
+    var context: Context? { host.focused?.context }
     var body: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
-            Button("Add", systemImage: "plus") { context?.send("clock.add") }
-                .disabled(!(context?.commands.contains("clock.add") ?? false))
+            Button("Add", systemImage: "plus") { host.send("clock.add") }
+                .disabled(!(context?.handles("clock.add") ?? false))
         }
     }
 }</code></pre>
@@ -581,11 +582,10 @@ sash.on("alerts:activated", ({ id, action }) => router.go(`/clock/${id}`))</code
     <tr><td><code>Examples/</code> <span class="status">not a product</span></td><td>The recipes from section 8 as compiling code in the template app: documents, alerts, toolbar, menus, haptics, a CLI companion, an update status panel. Copy, do not import.</td></tr>
   </table>
   <ul>
-    <li><b>Platform.</b> macOS 14 or later in draft 1, for <code>@Observable</code> and
-        <code>WKWebsiteDataStore(forIdentifier:)</code>. The core avoids AppKit where it can so an iOS
-        port is a matter of a second view type and a second UI product, not a rewrite.</li>
-    <li><b>Dependencies.</b> One: the Objective-C exception bridge for the torn-down
-        <code>WKURLSchemeTask</code> race. Everything else is the SDK.</li>
+    <li><b>Platform.</b> macOS 15 or later, Swift 6 language mode. The core avoids AppKit where it
+        can so an iOS port is a matter of a second view type, not a rewrite.</li>
+    <li><b>Dependencies.</b> None. The Objective-C exception bridge for the torn-down
+        <code>WKURLSchemeTask</code> race is a twelve-line target inside the package.</li>
     <li><b>Skills.</b> Two, in <code>skills/</code>: one teaching the Swift half, with the recipes as its
         examples, and one teaching the page half. A template repo shows both with the world clock.</li>
   </ul>
@@ -606,7 +606,13 @@ sash.on("alerts:activated", ({ id, action }) => router.go(`/clock/${id}`))</code
     <tr><td>The page describes, Swift does, a handle comes back.</td><td>The recipe shape for everything from saving to notifications. It keeps the page portable and the capability listing honest.</td></tr>
     <tr><td>No toolbar, menu or window extension.</td><td>Context plus commands already carries what those need, and the rendering is SwiftUI the developer would rather own.</td></tr>
     <tr><td>The updater has no page namespace.</td><td>It is a host facility. Showing it in the page is a three-call extension.</td></tr>
-    <tr><td>macOS 14 minimum.</td><td>Observable and identifier-based website data stores.</td></tr>
+    <tr><td>macOS 15 minimum, no dependencies.</td><td>One OS generation to test; the exception bridge is small enough to embed.</td></tr>
+    <tr><td>The class is <code>SashHost</code>, spelled <code>Sash.Host</code>.</td><td>Foundation exports a <code>Host</code> already, and every app imports Foundation.</td></tr>
+    <tr><td><code>session.send</code> and <code>host.send</code>, not <code>context.send</code>.</td><td>Context is a value; the session is what can talk to the page.</td></tr>
+    <tr><td>Request bodies are buffered; response bodies stream.</td><td>WebKit hands the whole request body over at start. Streaming responses is what SSE needs.</td></tr>
+    <tr><td>Strict rejection of unknown call fields is deferred.</td><td><code>JSONDecoder</code> cannot do it without a tracking decoder. Missing and mistyped fields are still <code>invalid-args</code>.</td></tr>
+    <tr><td>Persistence in milestone 1: memory and UserDefaults.</td><td>File and iCloud backends follow when an app needs them.</td></tr>
+    <tr><td>Rule-list regexes avoid alternation.</td><td>WebKit's content-blocker dialect rejected <code>(/|$)</code>; a resolved URL always has a path, so <code>/</code> closes the host.</td></tr>
   </table>
 
   <!-- ============================================================ -->

@@ -1,0 +1,45 @@
+name: WorldClock
+options:
+  bundleIdPrefix: app.sash.examples
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+packages:
+  Sash:
+    path: ../..
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: false
+    CODE_SIGN_STYLE: Automatic
+  debug:
+    # Un-sandboxed and ad-hoc signed. WebKit's WebContent child crashes under
+    # App Sandbox with an ad-hoc signature, so debug builds run without it.
+    CODE_SIGN_IDENTITY: "Sign to Run Locally"
+    CODE_SIGN_STYLE: Manual
+targets:
+  WorldClock:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+      # A folder reference: the web app ships as Contents/Resources/web/.
+      - path: web
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: Sash
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.sash.examples.worldclock
+        CODE_SIGN_ENTITLEMENTS: WorldClock.entitlements
+    info:
+      path: Info.plist
+      properties:
+        CFBundleName: WorldClock
+        CFBundleDisplayName: WorldClock
+        LSApplicationCategoryType: public.app-category.utilities
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSHumanReadableCopyright: ""

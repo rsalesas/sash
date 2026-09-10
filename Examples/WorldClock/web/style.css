@@ -1,0 +1,27 @@
+:root { --bg: #ffffff; --fg: #1c1c1e; --muted: #7a7a80; --line: #e6e6ea; --row: #f7f7f9; --accent: var(--sash-accent, #0a84ff); }
+:root[data-sash-appearance="dark"] { --bg: #1e1e21; --fg: #f2f2f7; --muted: #98989f; --line: #303035; --row: #26262a; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 14px -apple-system, system-ui, sans-serif; -webkit-user-select: none; }
+main { height: 100%; display: flex; flex-direction: column; }
+.clocks { list-style: none; margin: 0; padding: 8px; flex: 1; overflow-y: auto; }
+.clocks li { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: baseline; padding: 10px 12px; border-radius: 8px; }
+.clocks li:nth-child(odd) { background: var(--row); }
+.clocks .name { font-weight: 600; }
+.clocks .zone { color: var(--muted); font-size: 12px; margin-left: 8px; }
+.clocks .time { font-size: 22px; font-variant-numeric: tabular-nums; font-weight: 300; }
+.clocks .offset { color: var(--muted); font-size: 12px; min-width: 5em; text-align: right; }
+.clocks .remove { grid-column: 3; opacity: 0; background: none; border: 0; color: var(--muted); font-size: 14px; }
+.clocks li:hover .remove { opacity: 1; }
+.empty { flex: 1; display: grid; place-items: center; color: var(--muted); margin: 0; }
+kbd { font: inherit; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.bar { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-top: 1px solid var(--line); }
+.spacer { flex: 1; }
+.muted { color: var(--muted); }
+dialog { border: 0; border-radius: 12px; padding: 20px 22px; background: var(--bg); color: var(--fg); box-shadow: 0 12px 40px rgba(0,0,0,.3); min-width: 300px; }
+dialog::backdrop { background: rgba(0,0,0,.25); }
+dialog h2 { margin: 0 0 12px; font-size: 15px; }
+dialog label { display: grid; gap: 4px; margin: 8px 0; font-size: 12px; color: var(--muted); }
+dialog input { font: inherit; font-size: 14px; color: var(--fg); background: var(--row); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 14px 0 0; padding: 0; }
+dialog button { font: inherit; padding: 5px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--row); color: var(--fg); }
+dialog button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }

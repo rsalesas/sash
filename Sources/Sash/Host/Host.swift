@@ -25,7 +25,6 @@ public final class SashHost {
     @ObservationIgnored private var namespaces: Set<String> = []
     @ObservationIgnored private(set) var schemeHandler: SchemeHandler!
     @ObservationIgnored private var dataStore: WKWebsiteDataStore!
-    @ObservationIgnored private let processPool = WKProcessPool()
     @ObservationIgnored private var appearanceObservation: NSKeyValueObservation?
     @ObservationIgnored private var colorObserver: (any NSObjectProtocol)?
     @ObservationIgnored private(set) var networkPolicy: NetworkPolicy?
@@ -214,7 +213,6 @@ public final class SashHost {
     /// handler; its own user content controller.
     func makeConfiguration() -> WKWebViewConfiguration {
         let c = WKWebViewConfiguration()
-        c.processPool = processPool
         c.websiteDataStore = dataStore
         c.setURLSchemeHandler(schemeHandler, forURLScheme: Sash.scheme)
         c.userContentController = WKUserContentController()

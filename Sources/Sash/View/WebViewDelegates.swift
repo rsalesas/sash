@@ -67,24 +67,24 @@ final class WebViewDelegates: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
-                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor () -> Void) {
+                 initiatedByFrame frame: WKFrameInfo) async {
         let alert = NSAlert()
         alert.messageText = message
         alert.addButton(withTitle: "OK")
-        Dialogs.present(alert, on: webView.window) { _ in completionHandler() }
+        _ = await Dialogs.present(alert, on: webView.window)
     }
 
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
-                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (Bool) -> Void) {
+                 initiatedByFrame frame: WKFrameInfo) async -> Bool {
         let alert = NSAlert()
         alert.messageText = message
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Cancel")
-        Dialogs.present(alert, on: webView.window) { completionHandler($0 == .alertFirstButtonReturn) }
+        return await Dialogs.present(alert, on: webView.window) == .alertFirstButtonReturn
     }
 
     func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?,
-                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (String?) -> Void) {
+                 initiatedByFrame frame: WKFrameInfo) async -> String? {
         let alert = NSAlert()
         alert.messageText = prompt
         alert.addButton(withTitle: "OK")
@@ -93,19 +93,17 @@ final class WebViewDelegates: NSObject, WKNavigationDelegate, WKUIDelegate {
         field.stringValue = defaultText ?? ""
         alert.accessoryView = field
         alert.window.initialFirstResponder = field
-        Dialogs.present(alert, on: webView.window) { completionHandler($0 == .alertFirstButtonReturn ? field.stringValue : nil) }
+        return await Dialogs.present(alert, on: webView.window) == .alertFirstButtonReturn ? field.stringValue : nil
     }
 }
 
 @MainActor
 enum Dialogs {
-    /// A sheet when there is a window, a modal panel when there is not. The
-    /// completion always runs.
-    static func present(_ alert: NSAlert, on window: NSWindow?, _ completion: @escaping @MainActor (NSApplication.ModalResponse) -> Void) {
+    /// A sheet when there is a window, a modal panel when there is not.
+    static func present(_ alert: NSAlert, on window: NSWindow?) async -> NSApplication.ModalResponse {
         if let window, window.isVisible {
-            alert.beginSheetModal(for: window) { response in completion(response) }
-        } else {
-            completion(alert.runModal())
+            return await alert.beginSheetModal(for: window)
         }
+        return alert.runModal()
     }
 }

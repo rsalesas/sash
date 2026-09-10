@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Calculator</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="calc" aria-label="Calculator">
+  <output id="display" class="display" aria-live="polite">0</output>
+  <div class="keys" id="keys">
+    <button data-action="clear" class="fn">AC</button>
+    <button data-action="negate" class="fn">±</button>
+    <button data-action="percent" class="fn">%</button>
+    <button data-op="/" class="op">÷</button>
+    <button data-digit="7">7</button><button data-digit="8">8</button><button data-digit="9">9</button>
+    <button data-op="*" class="op">×</button>
+    <button data-digit="4">4</button><button data-digit="5">5</button><button data-digit="6">6</button>
+    <button data-op="-" class="op">−</button>
+    <button data-digit="1">1</button><button data-digit="2">2</button><button data-digit="3">3</button>
+    <button data-op="+" class="op">+</button>
+    <button data-digit="0" class="wide">0</button><button data-action="dot">.</button>
+    <button data-action="equals" class="op">=</button>
+  </div>
+</main>
+<script src="calc.js"></script>
+</body>
+</html>
