@@ -6,12 +6,16 @@
   /* The day band. One ramp, both appearances: night until 05:00, dawn peaking
      at 06:30, full daylight 08:00-16:00, dusk peaking at 17:30, night from 19:00. */
   --night: #3b4666; --twi: #dda15e; --day: #dbe7f3;
+  --ocean: #b9cde2; --land: #f4f2ed; --graticule: rgba(0, 0, 0, .12);
+  color-scheme: light;
 }
 :root[data-sash-appearance="dark"] {
   --bg: #1e1e21; --fg: #f2f2f7; --muted: #98989f; --faint: #78787f;
   --line: #303036; --row: #2a2a2f; --hover: #33333b;
   --chrome: #2c2c31; --chrome-line: #3a3a41;
   --accent: var(--sash-accent, #0a84ff);
+  --ocean: #1f2a3d; --land: #62708a; --graticule: rgba(255, 255, 255, .11);
+  color-scheme: dark;
 }
 
 html, body { height: 100%; margin: 0; overflow: hidden; }
@@ -23,6 +27,7 @@ main { height: 100%; display: flex; flex-direction: column; }
 
 /* The scroller is a sibling of the bar, so the bar cannot scroll away, and it
    owns the rubber band, so a hard pull cannot drag the page under it either. */
+.clocks[hidden] { display: none; }
 .clocks { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0;
   overflow-y: auto; overscroll-behavior: contain; }
 .clocks li { position: relative; box-sizing: border-box; display: grid;
@@ -83,6 +88,14 @@ main { height: 100%; display: flex; flex-direction: column; }
 .clocks:not(.reordering) li:hover .remove { visibility: visible; }
 .remove:hover { color: var(--fg); }
 
+/* Two layers: the globe is redrawn per pixel and only when it must be, so the
+   stars twinkle on a cheap canvas of their own behind it. */
+.stage { flex: 1; min-height: 0; position: relative; }
+.stage[hidden] { display: none; }
+.sky, .globe { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.globe { cursor: grab; touch-action: none; }
+.globe.spinning { cursor: grabbing; }
+
 .empty { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center;
   color: var(--muted); margin: 0; padding: 0 24px; }
 /* An explicit display rule beats the hidden attribute; say it again. */
@@ -94,19 +107,48 @@ kbd { font: inherit; border: 1px solid var(--line); border-radius: 4px; padding:
    the ink centred instead of leaving descender space no glyph here uses. */
 .bar { flex: none; box-sizing: border-box; height: 38px; display: flex; align-items: center; gap: 12px;
   padding: 0 15px 0.5px; background: var(--chrome); border-top: 1px solid var(--chrome-line); }
+.rightslot { display: flex; align-items: center; justify-content: flex-end; }
+/* While the bar is a track, the ends must not move: the date and the way back
+   are different widths, and the offset grows as you drag, which would slide
+   the track out from under the cursor. */
+.bar.tracking .rightslot { width: 132px; flex: none; }
+.bar.tracking #local { width: 116px; flex: none; }
 .spacer { flex: 1; }
+.spacer[hidden] { display: none; }
+
+/* With the globe up there is no band to drag, so the bar becomes the track:
+   your own day, midnight to midnight, in the same ramp as the rows. */
+.track { position: relative; display: block; flex: 1; height: 20px; margin: 0 14px; cursor: ew-resize; touch-action: none; }
+.track[hidden] { display: none; }
+.rail { position: absolute; left: 0; right: 0; top: 7px; height: 6px; border-radius: 3px;
+  background: linear-gradient(to right, var(--night) 0%, var(--night) 20.8%, var(--twi) 27.1%,
+    var(--day) 33.3%, var(--day) 66.7%, var(--twi) 72.9%, var(--night) 79.2%, var(--night) 100%); }
+/* The real time keeps its own place, so the handle can click back onto it. */
+.nowpip { position: absolute; top: 15px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%;
+  background: var(--muted); box-shadow: 0 0 0 1.5px var(--chrome); }
+.thandle { position: absolute; top: 2px; width: 2px; height: 16px; margin-left: -1px; border-radius: 1px;
+  background: var(--fg); box-shadow: 0 0 0 1.5px var(--chrome); }
 .muted { color: var(--muted); font-size: 12.5px; line-height: 1; font-variant-numeric: tabular-nums; }
 
 dialog { border: 1px solid var(--chrome-line); border-radius: 12px; padding: 20px 22px; background: var(--bg); color: var(--fg);
   box-shadow: 0 12px 40px rgba(0,0,0,.3); min-width: 300px; }
 dialog::backdrop { background: rgba(0,0,0,.25); }
 dialog h2 { margin: 0 0 12px; font-size: 15px; }
-dialog label { display: grid; gap: 4px; margin: 8px 0; font-size: 12px; color: var(--muted); }
-dialog input, dialog select { font: inherit; font-size: 14px; color: var(--fg); background: var(--row);
-  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
-dialog input { cursor: text; -webkit-user-select: text; }
-dialog select { appearance: auto; padding: 4px 8px; }
-dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 14px 0 0; padding: 0; }
+dialog label { display: grid; gap: 3px; margin: 9px 0; font-size: 12px; color: var(--muted); }
+dialog input { font: inherit; font-size: 13px; color: var(--fg); background: var(--row);
+  border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px; height: 22px;
+  box-sizing: border-box; cursor: text; -webkit-user-select: text; }
+/* A native popup button's height is fixed — 16.5pt whatever the font — so it
+   can never match the text field beside it. Half-styling is what looked wrong
+   before: native chrome with our background behind it. This drops the chrome
+   entirely and matches the field, chevron and all. The menu it opens is still
+   the system's, and still follows color-scheme. */
+dialog select { font: inherit; font-size: 13px; color: var(--fg);
+  background: var(--row) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='12' viewBox='0 0 9 12' fill='none' stroke='%238a8a93' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 5L4.5 2.5L7 5'/%3E%3Cpath d='M2 7L4.5 9.5L7 7'/%3E%3C/svg%3E") no-repeat right 7px center;
+  border: 1px solid var(--line); border-radius: 5px; padding: 2px 24px 2px 7px;
+  height: 22px; box-sizing: border-box; appearance: none; }
+dialog select:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 24px 0 0; padding: 0; }
 dialog button { font: inherit; padding: 5px 14px; border-radius: 6px; border: 1px solid var(--line);
   background: var(--row); color: var(--fg); }
 dialog button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }

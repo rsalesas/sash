@@ -8,12 +8,13 @@
 <body>
 <main>
   <ul id="clocks" class="clocks"></ul>
+  <div id="stage" class="stage" hidden><canvas id="sky" class="sky"></canvas><canvas id="globe" class="globe"></canvas></div>
   <p id="empty" class="empty" hidden>No cities yet. Press <kbd>&#8984;N</kbd> or the + button.</p>
   <footer class="bar">
     <span id="local" class="muted"></span>
-    <span class="spacer"></span>
-    <span id="today" class="muted"></span>
-    <button id="now" class="nowbtn" type="button" hidden></button>
+    <span id="track" class="track" hidden><span class="rail"></span><span class="nowpip"></span><span class="thandle"></span></span>
+    <span id="spacer" class="spacer"></span>
+    <span class="rightslot"><span id="today" class="muted"></span><button id="now" class="nowbtn" type="button" hidden></button></span>
   </footer>
 </main>
 

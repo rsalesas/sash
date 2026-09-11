@@ -42,7 +42,8 @@ final class ExampleTests: XCTestCase {
         let host = SashHost(web: .directory(web), identifier: "sash.tests.clock", store: .userDefaults(suite: suite)) { Clipboard() }
         let session = try await Harness.boot(host)
         try await Harness.waitUntil { self.titleOf(session) == "World Clock" }
-        XCTAssertEqual(session.context.commands, ["clock.add"], "copy is not offered with no cities")
+        XCTAssertEqual(session.context.commands, ["clock.add", "clock.globe"],
+                       "copy is not offered with no cities; the globe always is")
 
         // ⌘N from Swift opens the page's dialog; submitting adds a city.
         session.send("clock.add")
@@ -56,8 +57,23 @@ final class ExampleTests: XCTestCase {
         """)
         try await Harness.waitUntil { host.store.scope("local").value("cities") != nil }
         XCTAssertEqual(host.store.scope("local").get("cities"), "[{\"name\":\"Tokyo\",\"tz\":\"Asia/Tokyo\"}]")
-        try await Harness.waitUntil { session.context.commands == ["clock.add", "clock.copy"] }
+        try await Harness.waitUntil { session.context.commands == ["clock.add", "clock.copy", "clock.globe"] }
         XCTAssertEqual(session.context.subtitle, "1 city")
+
+        // Which view is up is not something Swift tracks: the page offers the
+        // toggle for the view you are *not* in, and the toolbar reads that.
+        session.send("clock.globe")
+        try await Harness.waitUntil { session.context.commands.contains("clock.list") }
+        XCTAssertFalse(session.context.commands.contains("clock.globe"), "one toggle at a time")
+        session.send("clock.list")
+        try await Harness.waitUntil { session.context.commands.contains("clock.globe") }
+
+        // A sheet is modal for the toolbar too. The page handles nothing while
+        // it is open, which is what greys out buttons it cannot reach.
+        session.send("clock.add")
+        try await Harness.waitUntil { session.context.commands.isEmpty }
+        _ = try await session.evaluate("document.getElementById('add').close(); return true")
+        try await Harness.waitUntil { !session.context.commands.isEmpty }
 
         // Settings from Swift reach the page's formatting.
         host.store.scope("settings").set("showSeconds", false)
