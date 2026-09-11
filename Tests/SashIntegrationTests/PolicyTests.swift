@@ -26,8 +26,16 @@ final class PolicyTests: XCTestCase {
           i.src = 'https://www.apple.com/favicon.ico'; setTimeout(() => res('timeout'), 8000); });
         """)
         XCTAssertEqual(img, "blocked")
+        // Watch the hand-off rather than perform it: this used to open
+        // example.com in whatever browser the developer had, every run.
+        let handed = OpenedURLs()
+        let realOpener = WebViewDelegates.opener
+        WebViewDelegates.opener = { handed.urls.append($0) }
+        defer { WebViewDelegates.opener = realOpener }
         let nav = try await session.evaluate("location.href = 'https://example.com/'; await new Promise(r => setTimeout(r, 300)); return location.host")
         XCTAssertEqual(nav, "app", "navigation away is cancelled and the page stays")
+        XCTAssertEqual(handed.urls.map(\.absoluteString), ["https://example.com/"],
+                       "and the link is handed to the system instead")
         let miss = try await session.evaluate("try { await sash.net.fetch({url:'https://example.com'}); return 'ok' } catch (e) { return e.code }")
         XCTAssertEqual(miss, "capability-missing")
     }
@@ -73,4 +81,9 @@ final class ClipboardTests: XCTestCase {
         let back = try await session.evaluate("return await sash.clipboard.readText()")
         XCTAssertEqual(back, "from the page")
     }
+}
+
+/// A box, so the recorder can be mutated from an escaping closure.
+@MainActor final class OpenedURLs {
+    var urls: [URL] = []
 }

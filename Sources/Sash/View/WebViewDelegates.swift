@@ -46,11 +46,15 @@ final class WebViewDelegates: NSObject, WKNavigationDelegate, WKUIDelegate {
         webView.reload()
     }
 
+    /// Where an external link actually goes. A seam, so a test can watch the
+    /// decision rather than open the developer's browser on every run.
+    static var opener: (URL) -> Void = { NSWorkspace.shared.open($0) }
+
     /// Opens web and mail links in the system's handler; refuses anything else.
     static func openExternally(_ url: URL) {
         switch url.scheme?.lowercased() {
         case "http", "https", "mailto":
-            NSWorkspace.shared.open(url)
+            opener(url)
         default:
             Log.warning("refused to open \(url.scheme ?? "?") URL from the page")
         }
