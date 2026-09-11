@@ -34,6 +34,11 @@ public final class Session: Identifiable {
         let configuration = host.makeConfiguration()
         webView = SashWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
         webView.allowsMagnification = false
+        // Until the page's own stylesheet paints, the web view shows its own
+        // background, and the default is white — a flash on the way into a
+        // dark app. This tracks the view's appearance, so it follows an
+        // override as well as the system.
+        webView.underPageBackgroundColor = .textBackgroundColor
         #if DEBUG
         webView.isInspectable = true
         #endif
