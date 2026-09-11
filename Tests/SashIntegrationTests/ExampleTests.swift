@@ -48,7 +48,10 @@ final class ExampleTests: XCTestCase {
         session.send("clock.add")
         try await Harness.waitUntil { try await session.evaluate("return document.getElementById('add').open") == true }
         _ = try await session.evaluate("""
-        document.getElementById('name').value = 'Tokyo'; document.getElementById('tz').value = 'Asia/Tokyo';
+        document.getElementById('name').value = 'Tokyo';
+        const region = document.getElementById('region');
+        region.value = 'Asia'; region.dispatchEvent(new Event('change'));
+        document.getElementById('zone').value = 'Tokyo';
         document.getElementById('addForm').requestSubmit(); return true;
         """)
         try await Harness.waitUntil { host.store.scope("local").value("cities") != nil }

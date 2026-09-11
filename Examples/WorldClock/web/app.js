@@ -8,7 +8,8 @@
   const localEl = document.getElementById("local");
   const todayEl = document.getElementById("today");
   const nameInput = document.getElementById("name");
-  const tzInput = document.getElementById("tz");
+  const regionSel = document.getElementById("region");
+  const zoneSel = document.getElementById("zone");
   const nowBtn = document.getElementById("now");
   const dialog = document.getElementById("add");
   const form = document.getElementById("addForm");
@@ -16,6 +17,9 @@
   const inSash = !!window.sash;
   const setting = (k, d) => inSash ? (sash.state.get("settings", k) ?? d) : d;
   const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  const readable = (tz) => tz.replace(/_/g, " ");
+  const esc = (s) => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
 
   // null means live. Anything else freezes every clock at that instant, which
   // is what dragging a band does.
@@ -26,8 +30,30 @@
   function load() { try { return JSON.parse(localStorage.getItem("cities") || "[]"); } catch { return []; } }
   function save() { localStorage.setItem("cities", JSON.stringify(cities)); render(); }
 
+  // tzdb identifiers are Region/Location — and the location is sometimes two
+  // deep, as in America/Argentina/Buenos_Aires — so split on the first slash
+  // only. Choosing the region first is what makes the list findable: there is
+  // no America/San_Francisco, but scanning one region's worth of names to
+  // land on Los Angeles is a fair ask; scanning 417 is not.
   const zones = (Intl.supportedValuesOf ? Intl.supportedValuesOf("timeZone") : []);
-  document.getElementById("zones").innerHTML = zones.map(z => `<option value="${z}">`).join("");
+  const byRegion = new Map();
+  for (const z of zones) {
+    const cut = z.indexOf("/");
+    if (cut < 0) continue;
+    const region = z.slice(0, cut), place = z.slice(cut + 1);
+    if (!byRegion.has(region)) byRegion.set(region, []);
+    byRegion.get(region).push(place);
+  }
+  const placeLabel = (place) => place.replace(/_/g, " ").replace(/\//g, " / ");
+  const opt = (value, label) => `<option value="${esc(value)}">${esc(label)}</option>`;
+
+  regionSel.innerHTML = [...byRegion.keys()].sort().map(r => opt(r, r)).join("");
+  function fillZones(region, selected) {
+    const places = (byRegion.get(region) || []).slice().sort((a, b) => placeLabel(a).localeCompare(placeLabel(b)));
+    zoneSel.innerHTML = places.map(pl => opt(pl, placeLabel(pl))).join("");
+    if (selected && places.includes(selected)) zoneSel.value = selected;
+  }
+  regionSel.addEventListener("change", () => fillZones(regionSel.value));
 
   // The locale alone does not say whether the user wants 24-hour time; the
   // system setting does, and Sash passes it through as platform.hourCycle.
@@ -83,8 +109,6 @@
     };
   }
 
-  const readable = (tz) => tz.replace(/_/g, " ");
-  const esc = (s) => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
   const BACK = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5h10a6 6 0 1 1-6 6"/><path d="M3.5 4v4.5H8"/></svg>';
   const X = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
 
@@ -151,7 +175,10 @@
     // quarter hour is the finest step you can actually aim at, and it lands on
     // the hour every time. Option gives five-minute steps for the rest.
     const step = fine ? 5 : 15;
-    const mins = Math.round(p * 1440 / step) * step;
+    // The last slot of the day, not the first of the next one: rounding at the
+    // trailing edge reaches 1440, which is tomorrow's midnight, and the thumb
+    // leaps to the far left because that instant's hour is zero.
+    const mins = Math.min(1440 - step, Math.round(p * 1440 / step) * step);
     at = real - (real % 60000) + (mins - w) * 60000;
     tick();
   }
@@ -279,7 +306,11 @@
     const c = editing == null ? null : cities[editing];
     form.reset();
     nameInput.value = c ? c.name : "";
-    tzInput.value = c ? c.tz : "";
+    // A new city starts in your own region, which is usually the one you want.
+    const tz = c ? c.tz : here;
+    const cut = tz.indexOf("/");
+    regionSel.value = cut > 0 ? tz.slice(0, cut) : regionSel.options[0]?.value ?? "";
+    fillZones(regionSel.value, cut > 0 ? tz.slice(cut + 1) : undefined);
     document.getElementById("dialogTitle").textContent = c ? "Edit city" : "Add a city";
     document.getElementById("dialogPrimary").textContent = c ? "Save" : "Add";
     dialog.showModal();
@@ -296,8 +327,8 @@
   }
 
   form.addEventListener("submit", () => {
-    const name = nameInput.value.trim(), tz = tzInput.value.trim();
-    if (!name || !tz) return;
+    const name = nameInput.value.trim(), tz = `${regionSel.value}/${zoneSel.value}`;
+    if (!name || !regionSel.value || !zoneSel.value) return;
     try { new Intl.DateTimeFormat(undefined, { timeZone: tz }); } catch { alert(`"${tz}" is not a time zone`); return; }
     if (editing == null) cities.push({ name, tz });
     else cities[editing] = { name, tz };
