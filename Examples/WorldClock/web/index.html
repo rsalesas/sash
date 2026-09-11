@@ -21,9 +21,8 @@
   <form method="dialog" id="addForm">
     <h2 id="dialogTitle">Add a city</h2>
     <label>Name <input id="name" required autocomplete="off" placeholder="Tokyo"></label>
-    <label>Time zone <input id="tz" list="zones" required placeholder="Asia/Tokyo"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
-    <datalist id="zones"></datalist>
+    <label>Region <select id="region" required></select></label>
+    <label>Zone <select id="zone" required></select></label>
     <menu>
       <button value="cancel" type="button" id="cancel">Cancel</button>
       <button value="add" class="primary" id="dialogPrimary">Add</button>
