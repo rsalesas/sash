@@ -18,7 +18,9 @@ settings:
     Debug:
       # Un-sandboxed and ad-hoc signed. WebKit's WebContent child crashes under
       # App Sandbox with an ad-hoc signature, so debug builds run without it.
-      CODE_SIGN_IDENTITY: "Sign to Run Locally"
+      # "-" is ad-hoc; "Sign to Run Locally" is only Xcode's name for it in the
+      # UI, and xcodebuild will not resolve it as a certificate.
+      CODE_SIGN_IDENTITY: "-"
       CODE_SIGN_STYLE: Manual
     Release:
       # Signs with a Developer ID, hardened and timestamped, so the built app
