@@ -39,6 +39,14 @@ public final class Session: Identifiable {
         // dark app. This tracks the view's appearance, so it follows an
         // override as well as the system.
         webView.underPageBackgroundColor = .textBackgroundColor
+        // underPageBackgroundColor only covers the gap before WebKit paints
+        // anything at all (and the rubber-band area beyond the page). Once the
+        // document exists but its stylesheet hasn't loaded yet, WebKit paints
+        // its own opaque white in between — the flash survives even with the
+        // above set. Turning off the private drawsBackground flag stops that
+        // implicit white paint, so underPageBackgroundColor keeps showing
+        // through until the page's own CSS actually paints a background.
+        webView.setValue(false, forKey: "drawsBackground")
         #if DEBUG
         webView.isInspectable = true
         #endif
